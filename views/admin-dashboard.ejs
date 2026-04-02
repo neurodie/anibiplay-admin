@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin" class="active">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <div class="top-actions">
+        <p class="muted mono">login: <%= adminUser %></p>
+        <form method="post" action="/admin/logout">
+          <button type="submit" class="btn ghost">Logout</button>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Content Dashboard</h1>
+      <p class="muted">Ringkasan data series, episode, dan stream lintas platform.</p>
+    </section>
+
+    <section class="kpi-grid">
+      <article class="kpi-card">
+        <h3>Total Series</h3>
+        <p><%= Number(stats.series).toLocaleString('id-ID') %></p>
+      </article>
+      <article class="kpi-card">
+        <h3>Total Episodes</h3>
+        <p><%= Number(stats.episodes).toLocaleString('id-ID') %></p>
+      </article>
+      <article class="kpi-card">
+        <h3>Total Streams</h3>
+        <p><%= Number(stats.streams).toLocaleString('id-ID') %></p>
+      </article>
+      <article class="kpi-card danger">
+        <h3>Series Tanpa Episode</h3>
+        <p><%= Number(stats.seriesNoEpisode).toLocaleString('id-ID') %></p>
+      </article>
+      <article class="kpi-card danger">
+        <h3>Series Episode Tanpa Stream</h3>
+        <p><a class="kpi-link" href="#series-missing-streams"><%= Number(stats.seriesWithNoStream).toLocaleString('id-ID') %></a></p>
+      </article>
+      <article class="kpi-card danger">
+        <h3>Total Episode Tanpa Stream</h3>
+        <p><a class="kpi-link" href="/admin/episodes/no-stream"><%= Number(stats.episodesNoStream).toLocaleString('id-ID') %></a></p>
+      </article>
+    </section>
+
+    <% if (flashError) { %>
+      <section class="card">
+        <p class="muted">Error: <strong><%= flashError %></strong></p>
+      </section>
+    <% } %>
+
+    <section class="card" id="series-missing-streams">
+      <div class="section-head">
+        <h3>Series Dengan Episode Tanpa Stream</h3>
+        <a class="btn ghost" href="/admin/episodes/no-stream">Lihat Semua Episode Tanpa Stream</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Platform</th>
+              <th>Title</th>
+              <th>Total Episodes</th>
+              <th>Episodes Tanpa Stream</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% seriesMissingStreams.forEach((s) => { %>
+              <tr>
+                <td class="mono"><%= s.id %></td>
+                <td><span class="chip"><%= s.source_platform || '-' %></span></td>
+                <td><a href="/admin/series/<%= s.id %>"><%= s.title %></a></td>
+                <td><%= Number(s.total_episodes).toLocaleString('id-ID') %></td>
+                <td><%= Number(s.missing_stream_episodes).toLocaleString('id-ID') %></td>
+              </tr>
+            <% }); %>
+            <% if (!seriesMissingStreams.length) { %>
+              <tr>
+                <td colspan="5" class="muted">Semua episode sudah punya stream.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="grid3">
+      <article class="card">
+        <h3>By Content Origin</h3>
+        <ul class="metric-list">
+          <% originRows.forEach((x) => { %>
+            <li>
+              <span><%= x.content_origin || '-' %></span>
+              <strong><%= Number(x.total).toLocaleString('id-ID') %></strong>
+            </li>
+          <% }); %>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h3>By Source Platform</h3>
+        <ul class="metric-list">
+          <% platformRows.forEach((x) => { %>
+            <li>
+              <span><%= x.source_platform || '-' %></span>
+              <strong><%= Number(x.total).toLocaleString('id-ID') %></strong>
+            </li>
+          <% }); %>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h3>Top Type</h3>
+        <ul class="metric-list">
+          <% typeRows.forEach((x) => { %>
+            <li>
+              <span><%= x.type_label || '-' %></span>
+              <strong><%= Number(x.total).toLocaleString('id-ID') %></strong>
+            </li>
+          <% }); %>
+        </ul>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h3>Recently Updated Series</h3>
+        <a class="btn" href="/admin/series">Manage Series</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Platform</th>
+              <th>Origin</th>
+              <th>Type</th>
+              <th>Title</th>
+              <th>Episodes</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% latestSeries.forEach((s) => { %>
+              <tr>
+                <td class="mono"><%= s.id %></td>
+                <td><span class="chip"><%= s.source_platform %></span></td>
+                <td><%= s.content_origin %></td>
+                <td><%= s.type || '-' %></td>
+                <td><a href="/admin/series/<%= s.id %>"><%= s.title %></a></td>
+                <td><%= s.episode_count %></td>
+                <td class="mono"><%= s.updated_at %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

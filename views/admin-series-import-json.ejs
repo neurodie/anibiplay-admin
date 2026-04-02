@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series" class="active">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <p><a class="inline-link" href="/admin/series">&larr; Back to Series</a></p>
+
+    <section class="hero card">
+      <h1>Import Series JSON</h1>
+      <p class="muted">Paste JSON array series atau object <span class="mono">{ "data": [...] }</span>.</p>
+    </section>
+
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+    <% if (result) { %>
+      <section class="card">
+        <h3>Import Result</h3>
+        <div class="detail-grid">
+          <div><strong>Total Input:</strong> <%= result.total %></div>
+          <div><strong>Inserted:</strong> <%= result.inserted %></div>
+          <div><strong>Skipped Duplicate:</strong> <%= result.skipped_duplicate %></div>
+          <div><strong>Failed:</strong> <%= result.failed %></div>
+        </div>
+        <% if (result.created_ids && result.created_ids.length) { %>
+          <p class="muted mono" style="margin-top:10px;">Created IDs: <%= result.created_ids.join(', ') %></p>
+        <% } %>
+        <% if (result.errors && result.errors.length) { %>
+          <p class="muted" style="margin-top:10px;"><strong>Errors (max 20):</strong></p>
+          <ul class="metric-list">
+            <% result.errors.slice(0, 20).forEach((e) => { %>
+              <li><span class="mono"><%= e %></span></li>
+            <% }) %>
+          </ul>
+        <% } %>
+      </section>
+    <% } %>
+
+    <section class="card">
+      <h3>Sample JSON</h3>
+      <pre class="mono" style="white-space:pre-wrap; background:#f3f8f4; border:1px solid #e3ebe4; padding:10px; border-radius:10px;">[
+  {
+    "source_platform": "animekita",
+    "source_series_id": 151869,
+    "content_origin": "donghua",
+    "title": "A World Worth Protecting",
+    "series_slug": "a-world-worth-protecting",
+    "cover_url": "https://assets.animekita.org/cover/2026/02/42308fdd2b9c16b9.jpg",
+    "type": "Donghua",
+    "status": "Completed",
+    "rating": 7.89,
+    "published_text": "Aug 11, 2022",
+    "author": "Shanghai Foch Film Culture Investment",
+    "synopsis": "Wang Baole hidup di era kultivasi modern...",
+    "genres": ["Adventure", "Comedy", "Fantasy"]
+  },
+  {
+    "source_platform": "donghub",
+    "source_series_id": 605,
+    "content_origin": "anime",
+    "title": "Black Clover",
+    "series_slug": "black-clover",
+    "image": "https://cdn.example.com/black-clover.jpg",
+    "type": "TV",
+    "status": "Completed",
+    "rating": 8.1,
+    "published_text": "Oct 3, 2017",
+    "author": "Studio Pierrot",
+    "description": "Asta dan Yuno berjuang menjadi Kaisar Sihir.",
+    "genres": ["Action", "Comedy", "Fantasy", "Shounen"]
+  }
+]</pre>
+      <p class="muted" style="margin-top:8px;">Alias didukung: <span class="mono">cover_url|cover|image|poster</span> dan <span class="mono">synopsis|sinopsis|description|desc</span>.</p>
+    </section>
+
+    <form method="post" action="/admin/series/import-json" class="card">
+      <label for="json_payload">JSON Payload *</label>
+      <textarea id="json_payload" name="json_payload" rows="20" required class="mono"><%= payloadText || '' %></textarea>
+      <div class="inline-actions" style="margin-top:10px;">
+        <button type="submit" class="btn">Import JSON</button>
+        <a class="btn ghost" href="/admin/series/import-json">Reset</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

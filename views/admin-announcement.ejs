@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement" class="active">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Announcement Manager</h1>
+      <p class="muted">Kelola pesan announcement untuk API <span class="mono">/api/announcement?platform=...</span>.</p>
+    </section>
+
+    <% if (saved) { %>
+      <p class="alert ok">Announcement berhasil disimpan.</p>
+    <% } %>
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <form method="get" action="/admin/announcement" class="card inline-actions">
+      <label for="platform_pick">Platform</label>
+      <select id="platform_pick" name="platform">
+        <% platformOptions.forEach((p) => { %>
+          <option value="<%= p %>" <%= selectedPlatform === p ? 'selected' : '' %>><%= p %></option>
+        <% }) %>
+      </select>
+      <button type="submit" class="btn ghost">Load</button>
+    </form>
+
+    <form method="post" action="/admin/announcement" class="card form-grid">
+      <input type="hidden" name="platform" value="<%= selectedPlatform %>" />
+      <div>
+        <label for="platform_show">Platform</label>
+        <input id="platform_show" value="<%= selectedPlatform %>" disabled />
+      </div>
+      <div>
+        <label for="show">Show</label>
+        <select id="show" name="show">
+          <option value="1" <%= row && Number(row.is_show) === 1 ? 'selected' : '' %>>true</option>
+          <option value="0" <%= !row || Number(row.is_show) !== 1 ? 'selected' : '' %>>false</option>
+        </select>
+      </div>
+      <div>
+        <label for="maintenance">Maintenance</label>
+        <select id="maintenance" name="maintenance">
+          <option value="1" <%= row && Number(row.is_maintenance) === 1 ? 'selected' : '' %>>true</option>
+          <option value="0" <%= !row || Number(row.is_maintenance) !== 1 ? 'selected' : '' %>>false</option>
+        </select>
+      </div>
+      <div>
+        <label for="allow_exit_button">Allow Exit Button</label>
+        <select id="allow_exit_button" name="allow_exit_button">
+          <option value="1" <%= !row || Number(row.allow_exit_button) === 1 ? 'selected' : '' %>>true</option>
+          <option value="0" <%= row && Number(row.allow_exit_button) === 0 ? 'selected' : '' %>>false</option>
+        </select>
+      </div>
+      <div>
+        <label for="latest_app_version">Latest App Version</label>
+        <input id="latest_app_version" name="latest_app_version" value="<%= row && row.latest_app_version ? row.latest_app_version : '' %>" placeholder="1.1.3" />
+      </div>
+      <div class="full">
+        <label for="daily_update_text">Daily Update Text</label>
+        <textarea id="daily_update_text" name="daily_update_text" rows="3" placeholder="Update harian: episode baru sudah tersedia."><%= row && row.daily_update_text ? row.daily_update_text : '' %></textarea>
+      </div>
+      <div class="full">
+        <label for="title">Title</label>
+        <input id="title" name="title" value="<%= row && row.title ? row.title : '' %>" placeholder="Update Aplikasi 1.1.3" />
+      </div>
+      <div class="full">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" rows="5" placeholder="Performa detail anime sudah diperbaiki."><%= row && row.message ? row.message : '' %></textarea>
+      </div>
+      <div>
+        <label for="type">Type</label>
+        <select id="type" name="type">
+          <% const typeValue = row && row.type ? row.type : 'info'; %>
+          <option value="info" <%= typeValue === 'info' ? 'selected' : '' %>>info</option>
+          <option value="success" <%= typeValue === 'success' ? 'selected' : '' %>>success</option>
+          <option value="warning" <%= typeValue === 'warning' ? 'selected' : '' %>>warning</option>
+          <option value="danger" <%= typeValue === 'danger' ? 'selected' : '' %>>danger</option>
+        </select>
+      </div>
+      <div>
+        <label for="cta_text">CTA Text</label>
+        <input id="cta_text" name="cta_text" value="<%= row && row.cta_text ? row.cta_text : '' %>" placeholder="Update Sekarang" />
+      </div>
+      <div class="full">
+        <label for="cta_url">CTA URL</label>
+        <input id="cta_url" name="cta_url" value="<%= row && row.cta_url ? row.cta_url : '' %>" placeholder="https://your-domain.com/download" />
+      </div>
+      <div class="full inline-actions">
+        <button type="submit" class="btn">Save Announcement</button>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

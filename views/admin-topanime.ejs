@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime" class="active">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Top Anime Manager</h1>
+      <p class="muted">Kelola daftar manual top anime (sumber: tabel top_anime).</p>
+    </section>
+
+    <% if (created) { %><p class="alert ok">Top anime berhasil ditambahkan.</p><% } %>
+    <% if (updated) { %><p class="alert ok">Top anime berhasil diupdate.</p><% } %>
+    <% if (deleted) { %><p class="alert ok">Top anime berhasil dihapus.</p><% } %>
+    <% if (error) { %><p class="alert"><%= error %></p><% } %>
+
+    <form method="post" action="/admin/topanime/create" class="card form-grid">
+      <div class="full search-box">
+        <label for="series_search">Cari Series Anime Non-Movie *</label>
+        <input id="series_search" type="text" placeholder="Ketik judul anime..." autocomplete="off" required />
+        <input id="series_id" name="series_id" type="hidden" required />
+        <div id="series_pick_info" class="muted mono"></div>
+        <div id="series_results" class="search-results"></div>
+      </div>
+      <div>
+        <label for="sort_order">Sort Order</label>
+        <input id="sort_order" name="sort_order" type="number" min="0" value="0" />
+      </div>
+      <div>
+        <label for="is_active">Aktif</label>
+        <select id="is_active" name="is_active">
+          <option value="1" selected>Ya</option>
+          <option value="0">Tidak</option>
+        </select>
+      </div>
+      <div class="full inline-actions">
+        <button type="submit" class="btn">+ Add Top Anime</button>
+      </div>
+    </form>
+
+    <section class="card">
+      <div class="section-head">
+        <h3>Daftar Top Anime</h3>
+        <form method="get" action="/admin/topanime" class="inline-actions">
+          <input name="q" value="<%= q %>" placeholder="Search title/slug" />
+          <select name="active">
+            <option value="" <%= active === '' ? 'selected' : '' %>>All Status</option>
+            <option value="1" <%= active === '1' ? 'selected' : '' %>>Aktif</option>
+            <option value="0" <%= active === '0' ? 'selected' : '' %>>Nonaktif</option>
+          </select>
+          <button type="submit" class="btn ghost">Filter</button>
+          <a href="/admin/topanime" class="btn ghost">Reset</a>
+        </form>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Sort</th>
+              <th>Status</th>
+              <th>Series</th>
+              <th>Platform</th>
+              <th>Source ID</th>
+              <th>Rating</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% rows.forEach((r) => { %>
+              <tr>
+                <td class="mono"><%= r.id %></td>
+                <td class="mono"><%= r.sort_order %></td>
+                <td><%= Number(r.is_active) === 1 ? 'Aktif' : 'Nonaktif' %></td>
+                <td>
+                  <a href="/admin/series/<%= r.series_id %>"><%= r.title %></a>
+                  <span class="muted mono">(#<%= r.series_id %> / <%= r.series_slug %>)</span>
+                </td>
+                <td><span class="chip"><%= r.source_platform %></span></td>
+                <td class="mono"><%= r.source_series_id %></td>
+                <td><%= r.rating == null ? '-' : r.rating %></td>
+                <td>
+                  <div class="action-row">
+                    <form method="post" action="/admin/topanime/<%= r.id %>/update" class="inline-actions">
+                      <input name="sort_order" type="number" min="0" value="<%= r.sort_order %>" style="width:90px;" />
+                      <select name="is_active">
+                        <option value="1" <%= Number(r.is_active) === 1 ? 'selected' : '' %>>Aktif</option>
+                        <option value="0" <%= Number(r.is_active) === 0 ? 'selected' : '' %>>Nonaktif</option>
+                      </select>
+                      <button type="submit" class="btn ghost">Save</button>
+                    </form>
+                    <form method="post" action="/admin/topanime/<%= r.id %>/delete" onsubmit="return confirm('Hapus item top anime ini?')">
+                      <button type="submit" class="btn danger">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+            <% if (!rows.length) { %>
+              <tr><td colspan="8" class="muted">Belum ada data top anime.</td></tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const searchInput = document.getElementById('series_search');
+      const seriesIdInput = document.getElementById('series_id');
+      const resultsEl = document.getElementById('series_results');
+      const infoEl = document.getElementById('series_pick_info');
+      let timer = null;
+
+      const escapeHtml = (str) =>
+        String(str)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+
+      const clearResults = () => {
+        resultsEl.innerHTML = '';
+      };
+
+      const pickSeries = (item) => {
+        seriesIdInput.value = item.id;
+        searchInput.value = item.title;
+        infoEl.textContent = `Selected: #${item.id} / ${item.source_platform} / ${item.series_slug}`;
+        clearResults();
+      };
+
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.trim();
+        seriesIdInput.value = '';
+        infoEl.textContent = '';
+        if (timer) clearTimeout(timer);
+        if (q.length < 2) {
+          clearResults();
+          return;
+        }
+
+        timer = setTimeout(async () => {
+          try {
+            const res = await fetch(`/admin/topanime/series-search?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            const rows = Array.isArray(data.data) ? data.data : [];
+            if (!rows.length) {
+              resultsEl.innerHTML = '<div class="search-item muted">Tidak ada hasil</div>';
+              return;
+            }
+            resultsEl.innerHTML = rows
+              .map((item) => `<button type="button" class="search-item" data-id="${item.id}" data-title="${escapeHtml(item.title)}" data-slug="${escapeHtml(item.series_slug)}" data-platform="${escapeHtml(item.source_platform)}">#${item.id} - ${escapeHtml(item.title)} <span class="muted mono">(${escapeHtml(item.source_platform)} / ${escapeHtml(item.series_slug)})</span></button>`)
+              .join('');
+
+            resultsEl.querySelectorAll('.search-item').forEach((btn) => {
+              btn.addEventListener('click', () => {
+                pickSeries({
+                  id: btn.getAttribute('data-id'),
+                  title: btn.getAttribute('data-title'),
+                  series_slug: btn.getAttribute('data-slug'),
+                  source_platform: btn.getAttribute('data-platform')
+                });
+              });
+            });
+          } catch (_err) {
+            resultsEl.innerHTML = '<div class="search-item muted">Gagal ambil data</div>';
+          }
+        }, 220);
+      });
+    })();
+  </script>
+</body>
+</html>

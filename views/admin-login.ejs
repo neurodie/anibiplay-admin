@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card card">
+      <h1>Admin Login</h1>
+      <p class="muted">Masuk ke panel pengelolaan data anime dan donghua.</p>
+
+      <% if (error) { %>
+        <p class="alert"><%= error %></p>
+      <% } %>
+
+      <form method="post" action="/admin/login">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" required />
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required />
+
+        <button type="submit" class="btn">Login</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

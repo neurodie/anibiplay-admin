@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater" class="active">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Updater Ongoing</h1>
+      <p class="muted">Sinkron episode terbaru dari source platform ke database.</p>
+    </section>
+
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+    <% if (historyCleared) { %>
+      <p class="alert ok">Riwayat updater berhasil dihapus semua.</p>
+    <% } %>
+
+    <section class="split-grid">
+      <article class="card">
+        <h3>Ongoing By Platform</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Platform</th>
+                <th>Total Ongoing</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% (ongoingCounts || []).forEach((row) => { %>
+                <tr>
+                  <td><span class="chip"><%= row.source_platform %></span></td>
+                  <td><%= row.total %></td>
+                </tr>
+              <% }) %>
+              <% if (!ongoingCounts || !ongoingCounts.length) { %>
+                <tr>
+                  <td colspan="2" class="muted">Belum ada data ongoing.</td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3>Daftar Anime Ongoing</h3>
+        <form method="get" action="/admin/updater" class="inline-actions" style="margin-bottom:10px;">
+          <select name="platform" required>
+            <option value="">Pilih platform...</option>
+            <% (ongoingCounts || []).forEach((row) => { %>
+              <option value="<%= row.source_platform %>" <%= selectedPlatform === row.source_platform ? 'selected' : '' %>>
+                <%= row.source_platform %>
+              </option>
+            <% }) %>
+          </select>
+          <button type="submit" class="btn ghost">Tampilkan</button>
+          <% if (selectedPlatform) { %>
+            <a href="/admin/updater" class="btn ghost">Reset</a>
+          <% } %>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Platform</th>
+                <th>Source ID</th>
+                <th>Title</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (!selectedPlatform) { %>
+                <tr>
+                  <td colspan="5" class="muted">Pilih platform dulu untuk melihat daftar ongoing.</td>
+                </tr>
+              <% } else if (!ongoingSeries || !ongoingSeries.length) { %>
+                <tr>
+                  <td colspan="5" class="muted">Tidak ada series ongoing untuk platform <%= selectedPlatform %>.</td>
+                </tr>
+              <% } else { %>
+                <% (ongoingSeries || []).forEach((row) => { %>
+                  <tr>
+                    <td class="mono"><%= row.id %></td>
+                    <td><span class="chip"><%= row.source_platform %></span></td>
+                    <td class="mono"><%= row.source_series_id %></td>
+                    <td><a href="/admin/series/<%= row.id %>"><%= row.title %></a></td>
+                    <td>
+                      <form method="post" action="/admin/updater/run" class="inline-actions">
+                        <input type="hidden" name="selected_platform" value="<%= selectedPlatform || '' %>" />
+                        <input type="hidden" name="run_platform" value="<%= row.source_platform %>" />
+                        <input type="hidden" name="single_series_id" value="<%= row.id %>" />
+                        <input type="hidden" name="single_source_series_id" value="<%= row.source_series_id %>" />
+                        <input type="hidden" name="identity_mode" value="<%= selectedIdentityMode || 'source_episode_id' %>" />
+                        <input type="hidden" name="sync_mode" value="<%= selectedSyncMode || 'full_sync' %>" />
+                        <input type="hidden" name="mode" value="apply" />
+                        <input type="hidden" name="limit" value="1" />
+                        <input type="hidden" name="chapter_concurrency" value="<%= selectedChapterConcurrency || 8 %>" />
+                        <button type="submit" class="btn ghost" onclick="return confirm('Update episode untuk 1 series ini?')">Update 1 Series</button>
+                      </form>
+                    </td>
+                  </tr>
+                <% }) %>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <% if (selectedRunPlatform === 'donghub' && !envStatus.ok) { %>
+      <section class="card">
+        <h3>Env Belum Lengkap</h3>
+        <p class="muted">Lengkapi env berikut sebelum menjalankan updater donghub:</p>
+        <p class="mono"><%= envStatus.missing.join(', ') %></p>
+      </section>
+    <% } %>
+
+    <form method="post" action="/admin/updater/run" class="card form-grid">
+      <input type="hidden" name="selected_platform" value="<%= selectedPlatform || '' %>" />
+      <div>
+        <label for="run_platform">Run Platform</label>
+        <select id="run_platform" name="run_platform">
+          <option value="donghub" <%= selectedRunPlatform === 'donghub' ? 'selected' : '' %>>donghub</option>
+          <option value="animekita" <%= selectedRunPlatform === 'animekita' ? 'selected' : '' %>>animekita</option>
+        </select>
+      </div>
+      <div>
+        <label for="limit">Max Series per Run</label>
+        <input id="limit" name="limit" type="number" min="1" max="300" value="20" required />
+      </div>
+      <div>
+        <label for="chapter_concurrency">Animekita Chapter Concurrency</label>
+        <input id="chapter_concurrency" name="chapter_concurrency" type="number" min="1" max="30" value="<%= selectedChapterConcurrency || 8 %>" required />
+      </div>
+      <div>
+        <label for="identity_mode">Episode Unique Mode</label>
+        <select id="identity_mode" name="identity_mode">
+          <option value="source_episode_id" <%= selectedIdentityMode === 'source_episode_id' ? 'selected' : '' %>>source_episode_id</option>
+          <option value="chapter_slug" <%= selectedIdentityMode === 'chapter_slug' ? 'selected' : '' %>>chapter_slug</option>
+        </select>
+      </div>
+      <div>
+        <label for="sync_mode">Sync Scope</label>
+        <select id="sync_mode" name="sync_mode">
+          <option value="full_sync" <%= selectedSyncMode === 'full_sync' ? 'selected' : '' %>>full_sync (episode + stream)</option>
+          <option value="only_missing_streams" <%= selectedSyncMode === 'only_missing_streams' ? 'selected' : '' %>>only_missing_streams</option>
+        </select>
+      </div>
+      <div>
+        <label for="mode">Mode</label>
+        <select id="mode" name="mode">
+          <option value="dry_run" <%= selectedMode === 'dry_run' ? 'selected' : '' %>>Dry Run (tanpa simpan)</option>
+          <option value="apply" <%= selectedMode === 'apply' ? 'selected' : '' %>>Apply (simpan ke DB)</option>
+        </select>
+      </div>
+      <div class="full inline-actions">
+        <button type="submit" class="btn">Run Updater</button>
+      </div>
+    </form>
+
+    <form method="post" action="/admin/updater/run" class="card form-grid">
+      <input type="hidden" name="selected_platform" value="<%= selectedPlatform || '' %>" />
+      <div class="full">
+        <h3>Single Series Update (By Source ID)</h3>
+        <p class="muted">Update episode untuk 1 series berdasarkan platform + source_series_id.</p>
+      </div>
+      <div>
+        <label for="single_run_platform">Platform</label>
+        <select id="single_run_platform" name="run_platform">
+          <option value="donghub" <%= selectedRunPlatform === 'donghub' ? 'selected' : '' %>>donghub</option>
+          <option value="animekita" <%= selectedRunPlatform === 'animekita' ? 'selected' : '' %>>animekita</option>
+        </select>
+      </div>
+      <div>
+        <label for="single_source_series_id">Source Series ID *</label>
+        <input id="single_source_series_id" name="single_source_series_id" type="number" min="1" required placeholder="contoh: 153174" />
+      </div>
+      <div>
+        <label for="single_mode">Mode</label>
+        <select id="single_mode" name="mode">
+          <option value="apply" selected>Apply (simpan ke DB)</option>
+          <option value="dry_run">Dry Run (tanpa simpan)</option>
+        </select>
+      </div>
+      <div>
+        <label for="single_identity_mode">Episode Unique Mode</label>
+        <select id="single_identity_mode" name="identity_mode">
+          <option value="source_episode_id" <%= selectedIdentityMode === 'source_episode_id' ? 'selected' : '' %>>source_episode_id</option>
+          <option value="chapter_slug" <%= selectedIdentityMode === 'chapter_slug' ? 'selected' : '' %>>chapter_slug</option>
+        </select>
+      </div>
+      <div>
+        <label for="single_sync_mode">Sync Scope</label>
+        <select id="single_sync_mode" name="sync_mode">
+          <option value="full_sync" <%= selectedSyncMode === 'full_sync' ? 'selected' : '' %>>full_sync (episode + stream)</option>
+          <option value="only_missing_streams" <%= selectedSyncMode === 'only_missing_streams' ? 'selected' : '' %>>only_missing_streams</option>
+        </select>
+      </div>
+      <div>
+        <label for="single_chapter_concurrency">Animekita Chapter Concurrency</label>
+        <input id="single_chapter_concurrency" name="chapter_concurrency" type="number" min="1" max="30" value="<%= selectedChapterConcurrency || 8 %>" required />
+      </div>
+      <input type="hidden" name="single_series_id" value="" />
+      <input type="hidden" name="limit" value="1" />
+      <div class="full inline-actions">
+        <button type="submit" class="btn" onclick="return confirm('Run update 1 series berdasarkan source ID ini?')">Run Single Series</button>
+      </div>
+    </form>
+
+    <% if (result) { %>
+      <section class="card">
+        <h3>Ringkasan Run</h3>
+        <div class="detail-grid">
+          <div><strong>started_at:</strong> <span class="mono"><%= result.started_at %></span></div>
+          <div><strong>finished_at:</strong> <span class="mono"><%= result.finished_at %></span></div>
+          <div><strong>dry_run:</strong> <%= result.dry_run ? 'yes' : 'no' %></div>
+          <div><strong>identity_mode:</strong> <span class="mono"><%= result.identity_mode %></span></div>
+          <div><strong>sync_mode:</strong> <span class="mono"><%= result.sync_mode || 'full_sync' %></span></div>
+          <div><strong>series target:</strong> <%= result.total_series_target %></div>
+          <div><strong>series processed:</strong> <%= result.total_series_processed %></div>
+          <div><strong>episode candidates:</strong> <%= result.total_episode_candidates %></div>
+          <div><strong>episode new:</strong> <%= result.total_episode_new %></div>
+          <div><strong>episode skipped by mode:</strong> <%= result.total_episode_skipped_by_mode || 0 %></div>
+          <div><strong>episode inserted:</strong> <%= result.total_episode_inserted %></div>
+          <div><strong>stream inserted:</strong> <%= result.total_stream_inserted %></div>
+          <div><strong>total errors:</strong> <%= result.total_errors %></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Per Series</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Series ID</th>
+                <th>Source ID</th>
+                <th>Title</th>
+                <th>Candidates</th>
+                <th>New</th>
+                <th>Skipped New</th>
+                <th>Inserted Eps</th>
+                <th>Inserted Streams</th>
+                <th>Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% result.series.forEach((s) => { %>
+                <tr>
+                  <td class="mono"><%= s.series_id %></td>
+                  <td class="mono"><%= s.source_series_id %></td>
+                  <td><%= s.title %></td>
+                  <td><%= s.candidates %></td>
+                  <td><%= s.new_episodes %></td>
+                  <td><%= s.skipped_new_episodes || 0 %></td>
+                  <td><%= s.inserted_episodes %></td>
+                  <td><%= s.inserted_streams %></td>
+                  <td class="mono"><%= s.errors.length ? s.errors.join(' | ') : '-' %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% } %>
+
+    <section class="card">
+      <div class="section-head">
+        <h3>Riwayat Updater</h3>
+        <form method="post" action="/admin/updater/history/clear" onsubmit="return confirm('Yakin hapus semua riwayat updater?')">
+          <button type="submit" class="btn danger">Delete All Riwayat</button>
+        </form>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Run ID</th>
+              <th>Platform</th>
+              <th>Run Mode</th>
+              <th>Sync Mode</th>
+              <th>Identity</th>
+              <th>Target</th>
+              <th>Processed</th>
+              <th>New</th>
+              <th>Skipped</th>
+              <th>Inserted Eps</th>
+              <th>Inserted Streams</th>
+              <th>Errors</th>
+              <th>Status</th>
+              <th>By</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% (historyRows || []).forEach((r) => { %>
+              <tr>
+                <td class="mono"><%= r.id %></td>
+                <td><span class="chip"><%= r.run_platform %></span></td>
+                <td class="mono"><%= r.run_mode %></td>
+                <td class="mono"><%= r.sync_mode %></td>
+                <td class="mono"><%= r.identity_mode %></td>
+                <td><%= r.total_series_target %></td>
+                <td><%= r.total_series_processed %></td>
+                <td><%= r.total_episode_new %></td>
+                <td><%= r.total_episode_skipped_by_mode || 0 %></td>
+                <td><%= r.total_episode_inserted %></td>
+                <td><%= r.total_stream_inserted %></td>
+                <td><%= r.total_errors %></td>
+                <td><span class="chip"><%= r.status %></span></td>
+                <td><%= r.created_by || '-' %></td>
+                <td class="mono"><%= r.created_at %></td>
+              </tr>
+            <% }) %>
+            <% if (!historyRows || !historyRows.length) { %>
+              <tr>
+                <td colspan="15" class="muted">Belum ada riwayat updater.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

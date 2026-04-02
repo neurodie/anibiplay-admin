@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series" class="active">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <p><a class="inline-link" href="/admin/series">&larr; Back to Series</a></p>
+
+    <% if (success && success.length) { %>
+      <% success.forEach((msg) => { %>
+        <p class="alert ok"><%= msg %></p>
+      <% }); %>
+    <% } %>
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <section class="hero card">
+      <h1><%= series.title %></h1>
+      <p class="muted mono"><%= series.source_platform %> / <%= series.content_origin %> / ID <%= series.id %></p>
+      <div class="inline-actions">
+        <a class="btn" href="/admin/series/<%= series.id %>/edit">Edit Series</a>
+        <a class="btn ghost" href="/admin/series/<%= series.id %>/episodes/create">+ Add Episode</a>
+        <form method="post" action="/admin/series/<%= series.id %>/delete" onsubmit="return confirm('Yakin hapus series ini? Episode dan stream ikut terhapus.')">
+          <button type="submit" class="btn danger">Delete Series</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="card detail-grid">
+      <div><strong>ID:</strong> <span class="mono"><%= series.id %></span></div>
+      <div><strong>Source Series ID:</strong> <span class="mono"><%= series.source_series_id %></span></div>
+      <div><strong>Slug:</strong> <span class="mono"><%= series.series_slug %></span></div>
+      <div><strong>Type:</strong> <%= series.type || '-' %></div>
+      <div><strong>Status:</strong> <%= series.status || '-' %></div>
+      <div><strong>Rating:</strong> <%= series.rating || '-' %></div>
+      <div><strong>Published:</strong> <%= series.published_text || '-' %></div>
+      <div><strong>Author:</strong> <%= series.author || '-' %></div>
+      <div><strong>Genres:</strong> <%= genres.map((g) => g.name).join(', ') || '-' %></div>
+    </section>
+
+    <% if (series.cover_url) { %>
+      <section class="card">
+        <img src="<%= series.cover_url %>" alt="cover" class="cover" />
+      </section>
+    <% } %>
+
+    <section class="card">
+      <h3>Synopsis</h3>
+      <p class="pre"><%= series.synopsis || '-' %></p>
+    </section>
+
+    <section class="card">
+      <h3>Episodes (max 500)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Platform</th>
+              <th>Source Episode ID</th>
+              <th>Chapter</th>
+              <th>Slug</th>
+              <th>Date</th>
+              <th>Streams</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% episodes.forEach((e) => { %>
+              <tr>
+                <td class="mono"><%= e.id %></td>
+                <td><span class="chip"><%= e.source_platform %></span></td>
+                <td class="mono"><%= e.source_episode_id %></td>
+                <td><%= e.chapter_label || '-' %></td>
+                <td class="mono"><%= e.chapter_slug %></td>
+                <td><%= e.release_date_text || '-' %></td>
+                <td><%= e.stream_count %></td>
+                <td>
+                  <div class="action-row">
+                    <a class="btn ghost" href="/admin/episodes/<%= e.id %>/streams">Streams</a>
+                    <a class="btn ghost" href="/admin/episodes/<%= e.id %>/edit">Edit</a>
+                    <form method="post" action="/admin/episodes/<%= e.id %>/delete" onsubmit="return confirm('Yakin hapus episode ini? Semua stream episode ini ikut terhapus.')">
+                      <button type="submit" class="btn danger">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+            <% if (!episodes.length) { %>
+              <tr>
+                <td colspan="8" class="muted">Series ini belum punya episode.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

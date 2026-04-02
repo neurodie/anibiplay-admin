@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series" class="active">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <p><a class="inline-link" href="/admin/series">&larr; Back to Series</a></p>
+
+    <section class="hero card">
+      <h1>Create Series</h1>
+      <p class="muted">Tambah series baru manual tanpa SQL.</p>
+    </section>
+
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <section class="card">
+      <h3>Auto Insert Series</h3>
+      <p class="muted">Animekita: cukup tempel full URL detail series API. Donghub: isi source series ID.</p>
+      <form method="post" action="/admin/series/create/auto-insert" class="form-grid" id="auto_insert_form">
+        <div>
+          <label for="auto_platform">Platform</label>
+          <select id="auto_platform" name="platform">
+            <option value="animekita" selected>animekita</option>
+            <option value="donghub">donghub</option>
+          </select>
+        </div>
+        <div class="full">
+          <label for="auto_source_url">Source URL / Input *</label>
+          <input
+            id="auto_source_url"
+            name="source_url"
+            required
+            placeholder="https://apps.animekita.org/api/v1.2.5/series.php?url=niwatori-fighter"
+          />
+        </div>
+        <div>
+          <label for="auto_source_series_id">Source Series ID (khusus donghub, opsional)</label>
+          <input id="auto_source_series_id" name="source_series_id" type="number" min="1" placeholder="contoh: 605" />
+        </div>
+        <div class="full inline-actions">
+          <button type="button" class="btn ghost" id="btn_autofill">Auto Fill Form</button>
+          <button type="submit" class="btn">Auto Insert Series</button>
+        </div>
+        <div class="full">
+          <p id="auto_msg" class="muted mono"></p>
+        </div>
+      </form>
+    </section>
+
+    <form method="post" action="/admin/series/create" class="card form-grid">
+      <div>
+        <label for="source_platform">Source Platform *</label>
+        <input id="source_platform" name="source_platform" required placeholder="animekita / donghub" />
+      </div>
+
+      <div>
+        <label for="source_series_id">Source Series ID *</label>
+        <input id="source_series_id" name="source_series_id" type="number" min="1" required />
+      </div>
+
+      <div>
+        <label for="content_origin">Content Origin *</label>
+        <input id="content_origin" name="content_origin" required placeholder="anime / donghua" />
+      </div>
+
+      <div>
+        <label for="series_slug">Series Slug *</label>
+        <input id="series_slug" name="series_slug" required placeholder="contoh-series-slug" />
+      </div>
+
+      <div class="full">
+        <label for="title">Title *</label>
+        <input id="title" name="title" required />
+      </div>
+
+      <div class="full">
+        <label for="cover_url">Cover URL</label>
+        <input id="cover_url" name="cover_url" />
+      </div>
+
+      <div>
+        <label for="type">Type</label>
+        <input id="type" name="type" placeholder="TV / Movie / ONA" />
+      </div>
+
+      <div>
+        <label for="status">Status</label>
+        <input id="status" name="status" placeholder="Completed / Ongoing" />
+      </div>
+
+      <div>
+        <label for="rating">Rating</label>
+        <input id="rating" name="rating" placeholder="7.8" />
+      </div>
+
+      <div>
+        <label for="published_text">Published Text</label>
+        <input id="published_text" name="published_text" placeholder="Jan 12, 2026" />
+      </div>
+
+      <div class="full">
+        <label for="author">Author</label>
+        <input id="author" name="author" />
+      </div>
+
+      <div class="full">
+        <label for="genres_csv">Genres (comma separated)</label>
+        <input id="genres_csv" name="genres_csv" placeholder="Action, Fantasy, Comedy" />
+      </div>
+
+      <div class="full">
+        <label for="synopsis">Synopsis</label>
+        <textarea id="synopsis" name="synopsis" rows="12"></textarea>
+      </div>
+
+      <div class="full inline-actions">
+        <button type="submit" class="btn">Create Series</button>
+        <a class="btn ghost" href="/admin/series">Cancel</a>
+      </div>
+    </form>
+  </main>
+  <script>
+    (() => {
+      const platformEl = document.getElementById('auto_platform');
+      const sourceUrlEl = document.getElementById('auto_source_url');
+      const sourceSeriesIdEl = document.getElementById('auto_source_series_id');
+      const autoFillBtn = document.getElementById('btn_autofill');
+      const autoMsgEl = document.getElementById('auto_msg');
+
+      const targetIds = {
+        source_platform: document.getElementById('source_platform'),
+        source_series_id: document.getElementById('source_series_id'),
+        content_origin: document.getElementById('content_origin'),
+        series_slug: document.getElementById('series_slug'),
+        title: document.getElementById('title'),
+        cover_url: document.getElementById('cover_url'),
+        type: document.getElementById('type'),
+        status: document.getElementById('status'),
+        rating: document.getElementById('rating'),
+        published_text: document.getElementById('published_text'),
+        author: document.getElementById('author'),
+        genres_csv: document.getElementById('genres_csv'),
+        synopsis: document.getElementById('synopsis')
+      };
+
+      const applyPlatformHint = () => {
+        const platform = String(platformEl.value || '').trim().toLowerCase();
+        if (platform === 'donghub') {
+          sourceUrlEl.placeholder = 'Isi ID donghub atau URL yang mengandung ID';
+          sourceSeriesIdEl.parentElement.style.display = '';
+        } else {
+          sourceUrlEl.placeholder = 'https://apps.animekita.org/api/v1.2.5/series.php?url=niwatori-fighter';
+          sourceSeriesIdEl.parentElement.style.display = 'none';
+          sourceSeriesIdEl.value = '';
+        }
+      };
+
+      const fillManualForm = (data) => {
+        for (const [key, el] of Object.entries(targetIds)) {
+          if (!el) continue;
+          const v = data && data[key] != null ? String(data[key]) : '';
+          if (v) el.value = v;
+        }
+      };
+
+      platformEl.addEventListener('change', applyPlatformHint);
+      applyPlatformHint();
+
+      autoFillBtn.addEventListener('click', async () => {
+        const platform = String(platformEl.value || '').trim().toLowerCase();
+        const sourceUrl = String(sourceUrlEl.value || '').trim();
+        const sourceSeriesId = String(sourceSeriesIdEl.value || '').trim();
+
+        if (!sourceUrl) {
+          autoMsgEl.textContent = 'Source URL/Input wajib diisi.';
+          return;
+        }
+
+        autoMsgEl.textContent = 'Loading auto fill...';
+        autoFillBtn.disabled = true;
+        try {
+          const params = new URLSearchParams({ platform, source_url: sourceUrl });
+          if (sourceSeriesId) params.set('source_series_id', sourceSeriesId);
+          const res = await fetch(`/admin/series/create/autofill?${params.toString()}`);
+          const json = await res.json();
+          if (!res.ok) {
+            autoMsgEl.textContent = json && json.error ? `Error: ${json.error}` : 'Gagal auto fill';
+            return;
+          }
+          fillManualForm(json.data || {});
+          autoMsgEl.textContent = 'Auto fill berhasil. Silakan cek form, lalu Create Series atau Auto Insert.';
+        } catch (_err) {
+          autoMsgEl.textContent = 'Gagal auto fill series.';
+        } finally {
+          autoFillBtn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

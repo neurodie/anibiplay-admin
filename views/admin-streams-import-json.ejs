@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><strong>AnimeKita Panel</strong><span>Admin</span></div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series" class="active">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout"><button type="submit" class="btn ghost">Logout</button></form>
+    </div>
+  </header>
+  <main class="container">
+    <p><a class="inline-link" href="/admin/series">&larr; Back to Series</a></p>
+    <section class="hero card">
+      <h1>Import Streams JSON</h1>
+      <p class="muted">Batch insert episode streams via JSON.</p>
+    </section>
+    <% if (error) { %><p class="alert"><%= error %></p><% } %>
+    <% if (result) { %>
+      <section class="card">
+        <h3>Import Result</h3>
+        <div class="detail-grid">
+          <div><strong>Total Input:</strong> <%= result.total %></div>
+          <div><strong>Inserted:</strong> <%= result.inserted %></div>
+          <div><strong>Skipped Duplicate:</strong> <%= result.skipped_duplicate %></div>
+          <div><strong>Failed:</strong> <%= result.failed %></div>
+        </div>
+      </section>
+    <% } %>
+    <section class="card">
+      <h3>Sample JSON</h3>
+      <pre class="mono" style="white-space:pre-wrap; background:#f3f8f4; border:1px solid #e3ebe4; padding:10px; border-radius:10px;">[
+  {
+    "episode_id": 97071,
+    "resolution": "720p",
+    "stream_source_id": 577315,
+    "stream_url": "https://storage.animekita.org/ro/03bc-1735125233040.mp4",
+    "size_kb": 14467
+  },
+  {
+    "chapter_slug": "al-150294-9",
+    "resolution": "480p",
+    "stream_url": "https://pixeldrain.com/api/file/d12eEQSJ?download"
+  }
+]</pre>
+    </section>
+    <form method="post" action="/admin/streams/import-json" class="card">
+      <label for="json_payload">JSON Payload *</label>
+      <textarea id="json_payload" name="json_payload" rows="20" required class="mono"><%= payloadText || '' %></textarea>
+      <div class="inline-actions" style="margin-top:10px;">
+        <button type="submit" class="btn">Import JSON</button>
+        <a class="btn ghost" href="/admin/streams/import-json">Reset</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

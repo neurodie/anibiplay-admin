@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports" class="active">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Episode Error Reports</h1>
+      <p class="muted">Data laporan error episode dari database user.</p>
+    </section>
+
+    <% if (deleted) { %>
+      <p class="alert ok">Report berhasil dihapus.</p>
+    <% } %>
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <% if (tableMissing) { %>
+      <section class="card">
+        <p class="muted">Table <span class="mono">episode_error_reports</span> tidak ditemukan di user DB.</p>
+      </section>
+    <% } else { %>
+      <form method="get" action="/admin/episode-error-reports" class="card filters-advanced">
+        <div>
+          <label for="q">Search</label>
+          <input id="q" name="q" value="<%= q %>" placeholder="user_id, series_id, episode_url, reason" />
+        </div>
+        <div>
+          <label for="series_id">Series ID</label>
+          <input id="series_id" name="series_id" value="<%= seriesId %>" placeholder="Filter exact series_id" />
+        </div>
+        <div class="filter-actions">
+          <button type="submit" class="btn">Apply Filter</button>
+          <a href="/admin/episode-error-reports" class="btn ghost">Reset</a>
+        </div>
+      </form>
+
+      <section class="card">
+        <div class="section-head">
+          <h3>Ringkasan Series (Top 25)</h3>
+          <p class="muted mono">Jumlah user unik yang report per series</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Series ID</th>
+                <th>User Unik Report</th>
+                <th>Total Report</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% seriesSummary.forEach((s) => { %>
+                <tr>
+                  <td class="mono"><%= s.series_id %></td>
+                  <td><%= Number(s.total_users).toLocaleString('id-ID') %></td>
+                  <td><%= Number(s.total_reports).toLocaleString('id-ID') %></td>
+                  <td>
+                    <a class="btn ghost" href="/admin/episode-error-reports?series_id=<%= encodeURIComponent(s.series_id) %>&q=<%= encodeURIComponent(q) %>">Filter</a>
+                  </td>
+                </tr>
+              <% }); %>
+              <% if (!seriesSummary.length) { %>
+                <tr>
+                  <td colspan="4" class="muted">Belum ada ringkasan series.</td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <p class="muted mono">Total: <%= Number(total).toLocaleString('id-ID') %> | Page <%= page %>/<%= totalPages %></p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>User ID</th>
+                <th>Series ID</th>
+                <th>Episode URL</th>
+                <th>Reason</th>
+                <th>Created</th>
+                <th>User Unik / Total Report (Series)</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% rows.forEach((r) => { %>
+                <tr>
+                  <td class="mono"><%= r.id %></td>
+                  <td class="mono"><%= r.user_id %></td>
+                  <td class="mono"><%= r.series_id %></td>
+                  <td class="mono"><%= r.episode_url || '-' %></td>
+                  <td><%= r.reason || '-' %></td>
+                  <td class="mono"><%= r.created_at_text || '-' %></td>
+                  <td class="mono"><%= Number(r.total_users).toLocaleString('id-ID') %> / <%= Number(r.total_reports).toLocaleString('id-ID') %></td>
+                  <td>
+                    <form method="post" action="/admin/episode-error-reports/<%= r.id %>/delete?page=<%= page %>&q=<%= encodeURIComponent(q) %>&series_id=<%= encodeURIComponent(seriesId) %>" onsubmit="return confirm('Hapus report ini?');">
+                      <button type="submit" class="btn ghost">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }); %>
+              <% if (!rows.length) { %>
+                <tr>
+                  <td colspan="8" class="muted">Tidak ada data untuk filter ini.</td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pager">
+          <% if (page > 1) { %>
+            <a class="btn ghost" href="/admin/episode-error-reports?page=<%= page - 1 %>&q=<%= encodeURIComponent(q) %>&series_id=<%= encodeURIComponent(seriesId) %>">Prev</a>
+          <% } %>
+          <% if (page < totalPages) { %>
+            <a class="btn ghost" href="/admin/episode-error-reports?page=<%= page + 1 %>&q=<%= encodeURIComponent(q) %>&series_id=<%= encodeURIComponent(seriesId) %>">Next</a>
+          <% } %>
+        </div>
+      </section>
+    <% } %>
+  </main>
+</body>
+</html>

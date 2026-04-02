@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series" class="active">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <p><a class="inline-link" href="/admin/series/<%= series.id %>">&larr; Back to Series Detail</a></p>
+
+    <section class="hero card">
+      <h1>Edit Series #<%= series.id %></h1>
+      <p class="muted">Update metadata series, slug, dan genre.</p>
+    </section>
+
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <form method="post" action="/admin/series/<%= series.id %>/edit" class="card form-grid">
+      <div>
+        <label for="source_platform">Source Platform *</label>
+        <input id="source_platform" name="source_platform" value="<%= series.source_platform %>" required />
+      </div>
+
+      <div>
+        <label for="source_series_id">Source Series ID *</label>
+        <input id="source_series_id" name="source_series_id" type="number" min="1" value="<%= series.source_series_id %>" required />
+      </div>
+
+      <div>
+        <label for="content_origin">Content Origin *</label>
+        <input id="content_origin" name="content_origin" value="<%= series.content_origin %>" required />
+      </div>
+
+      <div>
+        <label for="series_slug">Series Slug *</label>
+        <input id="series_slug" name="series_slug" value="<%= series.series_slug %>" required />
+      </div>
+
+      <div class="full">
+        <label for="title">Title *</label>
+        <input id="title" name="title" value="<%= series.title %>" required />
+      </div>
+
+      <div class="full">
+        <label for="cover_url">Cover URL</label>
+        <input id="cover_url" name="cover_url" value="<%= series.cover_url || '' %>" />
+      </div>
+
+      <div>
+        <label for="type">Type</label>
+        <input id="type" name="type" value="<%= series.type || '' %>" />
+      </div>
+
+      <div>
+        <label for="status">Status</label>
+        <input id="status" name="status" value="<%= series.status || '' %>" />
+      </div>
+
+      <div>
+        <label for="rating">Rating</label>
+        <input id="rating" name="rating" value="<%= series.rating === null ? '' : series.rating %>" />
+      </div>
+
+      <div>
+        <label for="published_text">Published Text</label>
+        <input id="published_text" name="published_text" value="<%= series.published_text || '' %>" />
+      </div>
+
+      <div class="full">
+        <label for="author">Author</label>
+        <input id="author" name="author" value="<%= series.author || '' %>" />
+      </div>
+
+      <div class="full">
+        <label for="genres_csv">Genres (comma separated)</label>
+        <input id="genres_csv" name="genres_csv" value="<%= genreCsv %>" placeholder="Action, Fantasy, Comedy" />
+      </div>
+
+      <div class="full">
+        <label for="synopsis">Synopsis</label>
+        <textarea id="synopsis" name="synopsis" rows="12"><%= series.synopsis || '' %></textarea>
+      </div>
+
+      <div class="full inline-actions">
+        <button type="submit" class="btn">Save Changes</button>
+        <a class="btn ghost" href="/admin/series/<%= series.id %>">Cancel</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

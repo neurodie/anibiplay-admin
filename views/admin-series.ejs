@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series" class="active">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Series Manager</h1>
+      <p class="muted">Cari dan filter series berdasarkan platform, origin, type, status, serta ketersediaan episode.</p>
+    </section>
+
+    <% if (createdId) { %>
+      <p class="alert ok">Series baru berhasil dibuat dengan ID <%= createdId %>.</p>
+    <% } %>
+    <% if (deletedId) { %>
+      <p class="alert ok">Series ID <%= deletedId %> berhasil dihapus (termasuk episode/streams via cascade).</p>
+    <% } %>
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <form method="get" action="/admin/series" class="card filters-advanced">
+      <div>
+        <label for="q">Search</label>
+        <input id="q" name="q" value="<%= filters.q %>" placeholder="Title atau slug" />
+      </div>
+
+      <div>
+        <label for="source_platform">Platform</label>
+        <select id="source_platform" name="source_platform">
+          <option value="">All Platform</option>
+          <% options.platform.forEach((x) => { %>
+            <option value="<%= x %>" <%= filters.platform === x ? 'selected' : '' %>><%= x %></option>
+          <% }); %>
+        </select>
+      </div>
+
+      <div>
+        <label for="content_origin">Origin</label>
+        <select id="content_origin" name="content_origin">
+          <option value="">All Origin</option>
+          <% options.origin.forEach((x) => { %>
+            <option value="<%= x %>" <%= filters.origin === x ? 'selected' : '' %>><%= x %></option>
+          <% }); %>
+        </select>
+      </div>
+
+      <div>
+        <label for="type">Type</label>
+        <select id="type" name="type">
+          <option value="">All Type</option>
+          <% options.type.forEach((x) => { %>
+            <option value="<%= x %>" <%= filters.type === x ? 'selected' : '' %>><%= x %></option>
+          <% }); %>
+        </select>
+      </div>
+
+      <div>
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          <option value="">All Status</option>
+          <% options.status.forEach((x) => { %>
+            <option value="<%= x %>" <%= filters.status === x ? 'selected' : '' %>><%= x %></option>
+          <% }); %>
+        </select>
+      </div>
+
+      <div>
+        <label for="has_episodes">Has Episodes</label>
+        <select id="has_episodes" name="has_episodes">
+          <option value="" <%= filters.hasEpisodes === '' ? 'selected' : '' %>>All</option>
+          <option value="yes" <%= filters.hasEpisodes === 'yes' ? 'selected' : '' %>>Yes</option>
+          <option value="no" <%= filters.hasEpisodes === 'no' ? 'selected' : '' %>>No</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="sort">Sort</label>
+        <select id="sort" name="sort">
+          <option value="id_desc" <%= sort === 'id_desc' ? 'selected' : '' %>>ID Desc</option>
+          <option value="id_asc" <%= sort === 'id_asc' ? 'selected' : '' %>>ID Asc</option>
+          <option value="updated_desc" <%= sort === 'updated_desc' ? 'selected' : '' %>>Updated Desc</option>
+          <option value="title_asc" <%= sort === 'title_asc' ? 'selected' : '' %>>Title A-Z</option>
+          <option value="title_desc" <%= sort === 'title_desc' ? 'selected' : '' %>>Title Z-A</option>
+        </select>
+      </div>
+
+      <div class="filter-actions">
+        <button type="submit" class="btn">Apply Filter</button>
+        <a href="/admin/series" class="btn ghost">Reset</a>
+      </div>
+    </form>
+
+    <section class="card">
+      <div class="section-head">
+        <p class="muted mono">Total: <%= Number(total).toLocaleString('id-ID') %> | Page <%= page %>/<%= totalPages %></p>
+        <div class="inline-actions">
+          <a href="/admin/import-json-all" class="btn">Import All-in-One</a>
+          <a href="/admin/series/import-json" class="btn ghost">Import JSON</a>
+          <a href="/admin/episodes/import-json" class="btn ghost">Import Episodes JSON</a>
+          <a href="/admin/streams/import-json" class="btn ghost">Import Streams JSON</a>
+          <a href="/admin/series/create" class="btn">+ Create Series</a>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Platform</th>
+              <th>Source ID</th>
+              <th>Origin</th>
+              <th>Title</th>
+              <th>Slug</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Episodes</th>
+              <th>Updated</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% rows.forEach((s) => { %>
+              <tr>
+                <td class="mono"><%= s.id %></td>
+                <td><span class="chip"><%= s.source_platform %></span></td>
+                <td class="mono"><%= s.source_series_id %></td>
+                <td><%= s.content_origin %></td>
+                <td><a href="/admin/series/<%= s.id %>"><%= s.title %></a></td>
+                <td class="mono"><%= s.series_slug %></td>
+                <td><%= s.type || '-' %></td>
+                <td><%= s.status || '-' %></td>
+                <td><%= s.episode_count %></td>
+                <td class="mono"><%= s.updated_at %></td>
+                <td>
+                  <a class="btn ghost" href="/admin/series/<%= s.id %>/edit">Edit</a>
+                </td>
+              </tr>
+            <% }); %>
+            <% if (!rows.length) { %>
+              <tr>
+                <td colspan="11" class="muted">Tidak ada data untuk filter ini.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <% if (page > 1) { %>
+          <a class="btn ghost" href="/admin/series?page=<%= page - 1 %>&q=<%= encodeURIComponent(filters.q) %>&content_origin=<%= encodeURIComponent(filters.origin) %>&source_platform=<%= encodeURIComponent(filters.platform) %>&type=<%= encodeURIComponent(filters.type) %>&status=<%= encodeURIComponent(filters.status) %>&has_episodes=<%= encodeURIComponent(filters.hasEpisodes) %>&sort=<%= encodeURIComponent(sort) %>">Prev</a>
+        <% } %>
+        <% if (page < totalPages) { %>
+          <a class="btn ghost" href="/admin/series?page=<%= page + 1 %>&q=<%= encodeURIComponent(filters.q) %>&content_origin=<%= encodeURIComponent(filters.origin) %>&source_platform=<%= encodeURIComponent(filters.platform) %>&type=<%= encodeURIComponent(filters.type) %>&status=<%= encodeURIComponent(filters.status) %>&has_episodes=<%= encodeURIComponent(filters.hasEpisodes) %>&sort=<%= encodeURIComponent(sort) %>">Next</a>
+        <% } %>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

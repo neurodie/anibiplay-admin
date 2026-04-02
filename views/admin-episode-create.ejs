@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series" class="active">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <p><a class="inline-link" href="/admin/series/<%= series.id %>">&larr; Back to Series Detail</a></p>
+
+    <section class="hero card">
+      <h1>Create Episode</h1>
+      <p class="muted">Series: <strong><%= series.title %></strong> (<span class="mono"><%= series.source_platform %></span>)</p>
+    </section>
+
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <form method="post" action="/admin/series/<%= series.id %>/episodes/create" class="card form-grid">
+      <div>
+        <label for="source_episode_id">Source Episode ID *</label>
+        <input id="source_episode_id" name="source_episode_id" type="number" min="1" required />
+      </div>
+
+      <div>
+        <label for="chapter_label">Chapter Label</label>
+        <input id="chapter_label" name="chapter_label" placeholder="13 (End)" />
+      </div>
+
+      <div class="full">
+        <label for="chapter_slug">Chapter Slug *</label>
+        <input id="chapter_slug" name="chapter_slug" required placeholder="al-150294-13" />
+      </div>
+
+      <div class="full">
+        <label for="release_date_text">Release Date Text</label>
+        <input id="release_date_text" name="release_date_text" placeholder="13 Juni, 2024" />
+      </div>
+
+      <div class="full inline-actions">
+        <button type="submit" class="btn">Create Episode</button>
+        <a class="btn ghost" href="/admin/series/<%= series.id %>">Cancel</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>
