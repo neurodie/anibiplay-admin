@@ -23,8 +23,12 @@
         <a href="/admin/schedule">Schedule</a>
         <a href="/admin/updater">Updater</a>
         <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
         <a href="/admin/episode-error-reports">Error Reports</a>
         <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
       </nav>
       <form method="post" action="/admin/logout">
         <button type="submit" class="btn ghost">Logout</button>
@@ -35,7 +39,7 @@
   <main class="container">
     <section class="hero card">
       <h1>Top Anime Manager</h1>
-      <p class="muted">Kelola daftar manual top anime (sumber: tabel top_anime).</p>
+      <p class="muted">Kelola daftar manual top anime (series dari semua origin).</p>
     </section>
 
     <% if (created) { %><p class="alert ok">Top anime berhasil ditambahkan.</p><% } %>
@@ -45,8 +49,8 @@
 
     <form method="post" action="/admin/topanime/create" class="card form-grid">
       <div class="full search-box">
-        <label for="series_search">Cari Series Anime Non-Movie *</label>
-        <input id="series_search" type="text" placeholder="Ketik judul anime..." autocomplete="off" required />
+        <label for="series_search">Cari Series *</label>
+        <input id="series_search" type="text" placeholder="Ketik judul anime/donghua..." autocomplete="off" required />
         <input id="series_id" name="series_id" type="hidden" required />
         <div id="series_pick_info" class="muted mono"></div>
         <div id="series_results" class="search-results"></div>

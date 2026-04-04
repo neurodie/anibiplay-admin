@@ -23,8 +23,12 @@
         <a href="/admin/schedule">Schedule</a>
         <a href="/admin/updater">Updater</a>
         <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
         <a href="/admin/episode-error-reports">Error Reports</a>
         <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
       </nav>
       <form method="post" action="/admin/logout">
         <button type="submit" class="btn ghost">Logout</button>
@@ -105,6 +109,11 @@
       </div>
 
       <div class="full">
+        <label for="title2">Title2</label>
+        <input id="title2" name="title2" placeholder="Judul alternatif (opsional)" />
+      </div>
+
+      <div class="full">
         <label for="cover_url">Cover URL</label>
         <input id="cover_url" name="cover_url" />
       </div>
@@ -164,6 +173,7 @@
         content_origin: document.getElementById('content_origin'),
         series_slug: document.getElementById('series_slug'),
         title: document.getElementById('title'),
+        title2: document.getElementById('title2'),
         cover_url: document.getElementById('cover_url'),
         type: document.getElementById('type'),
         status: document.getElementById('status'),

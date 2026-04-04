@@ -23,8 +23,12 @@
         <a href="/admin/schedule">Schedule</a>
         <a href="/admin/updater">Updater</a>
         <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
         <a href="/admin/episode-error-reports">Error Reports</a>
         <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
       </nav>
       <form method="post" action="/admin/logout">
         <button type="submit" class="btn ghost">Logout</button>
@@ -46,6 +50,9 @@
 
     <section class="hero card">
       <h1><%= series.title %></h1>
+      <% if (series.title2) { %>
+        <p class="muted"><%= series.title2 %></p>
+      <% } %>
       <p class="muted mono"><%= series.source_platform %> / <%= series.content_origin %> / ID <%= series.id %></p>
       <div class="inline-actions">
         <a class="btn" href="/admin/series/<%= series.id %>/edit">Edit Series</a>
@@ -59,6 +66,7 @@
     <section class="card detail-grid">
       <div><strong>ID:</strong> <span class="mono"><%= series.id %></span></div>
       <div><strong>Source Series ID:</strong> <span class="mono"><%= series.source_series_id %></span></div>
+      <div><strong>Title2:</strong> <%= series.title2 || '-' %></div>
       <div><strong>Slug:</strong> <span class="mono"><%= series.series_slug %></span></div>
       <div><strong>Type:</strong> <%= series.type || '-' %></div>
       <div><strong>Status:</strong> <%= series.status || '-' %></div>

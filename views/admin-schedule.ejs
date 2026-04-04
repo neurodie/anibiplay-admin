@@ -23,8 +23,12 @@
         <a href="/admin/schedule" class="active">Schedule</a>
         <a href="/admin/updater">Updater</a>
         <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
         <a href="/admin/episode-error-reports">Error Reports</a>
         <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
       </nav>
       <form method="post" action="/admin/logout">
         <button type="submit" class="btn ghost">Logout</button>
@@ -40,6 +44,7 @@
 
     <% if (created) { %><p class="alert ok">Jadwal berhasil ditambahkan.</p><% } %>
     <% if (deleted) { %><p class="alert ok">Jadwal berhasil dihapus.</p><% } %>
+    <% if (deletedAll) { %><p class="alert ok">Semua daftar jadwal berhasil dihapus.</p><% } %>
     <% if (error) { %><p class="alert"><%= error %></p><% } %>
 
     <form method="post" action="/admin/schedule/create" class="card form-grid">
@@ -102,35 +107,40 @@
     <section class="card">
       <div class="section-head">
         <h3>Daftar Jadwal</h3>
-        <form method="get" action="/admin/schedule" class="inline-actions">
-          <select name="day">
-            <option value="">Semua Hari</option>
-            <% days.forEach((d) => { %>
-              <option value="<%= d %>" <%= selectedDay === d ? 'selected' : '' %>><%= d %></option>
-            <% }); %>
-          </select>
-          <select name="origin">
-            <option value="">All Origin</option>
-            <% filterOptions.origin.forEach((x) => { %>
-              <option value="<%= x %>" <%= selectedOrigin === x ? 'selected' : '' %>><%= x %></option>
-            <% }); %>
-          </select>
-          <select name="platform">
-            <option value="">All Platform</option>
-            <% filterOptions.platform.forEach((x) => { %>
-              <option value="<%= x %>" <%= selectedPlatform === x ? 'selected' : '' %>><%= x %></option>
-            <% }); %>
-          </select>
-          <select name="type">
-            <option value="">All Type</option>
-            <% filterOptions.type.forEach((x) => { %>
-              <option value="<%= x %>" <%= selectedType === x ? 'selected' : '' %>><%= x %></option>
-            <% }); %>
-          </select>
-          <button type="submit" class="btn ghost">Filter</button>
-          <a class="btn ghost" href="/admin/schedule?origin=donghua">Quick Donghua</a>
-          <a class="btn ghost" href="/admin/schedule">Reset</a>
-        </form>
+        <div class="inline-actions">
+          <form method="get" action="/admin/schedule" class="inline-actions">
+            <select name="day">
+              <option value="">Semua Hari</option>
+              <% days.forEach((d) => { %>
+                <option value="<%= d %>" <%= selectedDay === d ? 'selected' : '' %>><%= d %></option>
+              <% }); %>
+            </select>
+            <select name="origin">
+              <option value="">All Origin</option>
+              <% filterOptions.origin.forEach((x) => { %>
+                <option value="<%= x %>" <%= selectedOrigin === x ? 'selected' : '' %>><%= x %></option>
+              <% }); %>
+            </select>
+            <select name="platform">
+              <option value="">All Platform</option>
+              <% filterOptions.platform.forEach((x) => { %>
+                <option value="<%= x %>" <%= selectedPlatform === x ? 'selected' : '' %>><%= x %></option>
+              <% }); %>
+            </select>
+            <select name="type">
+              <option value="">All Type</option>
+              <% filterOptions.type.forEach((x) => { %>
+                <option value="<%= x %>" <%= selectedType === x ? 'selected' : '' %>><%= x %></option>
+              <% }); %>
+            </select>
+            <button type="submit" class="btn ghost">Filter</button>
+            <a class="btn ghost" href="/admin/schedule?origin=donghua">Quick Donghua</a>
+            <a class="btn ghost" href="/admin/schedule">Reset</a>
+          </form>
+          <form method="post" action="/admin/schedule/delete-all" onsubmit="return confirm('Yakin hapus SEMUA daftar jadwal?');">
+            <button type="submit" class="btn danger">Delete All Jadwal</button>
+          </form>
+        </div>
       </div>
       <div class="table-wrap">
         <table>

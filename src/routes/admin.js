@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
+const axios = require('axios');
 const { pool, userPool } = require('../db');
 const { toInt, escapeLike } = require('../utils/http');
 const { requireAdmin } = require('../middleware/auth');
@@ -130,6 +131,7 @@ function mapAutoSeriesInputFromRemote(platform, remoteData, options = {}) {
   );
 
   const title = firstNonEmpty(d.title, d.judul, d.name, d.anime_name);
+  const title2 = firstNonEmpty(d.title2, d.title_alt, d.judul2, d.english_title, d.en_title, d.alt_title);
   const coverUrl = firstNonEmpty(d.cover_url, d.cover, d.image, d.poster, d.thumbnail, d.thumb);
   const type = firstNonEmpty(d.type, d.format, d.kind);
   const status = firstNonEmpty(d.status, d.airing_status);
@@ -149,6 +151,7 @@ function mapAutoSeriesInputFromRemote(platform, remoteData, options = {}) {
     source_series_id: Number.isFinite(sourceSeriesId) && sourceSeriesId > 0 ? String(sourceSeriesId) : '',
     content_origin: contentOrigin,
     title,
+    title2,
     series_slug: seriesSlug,
     cover_url: coverUrl,
     type,
@@ -172,14 +175,15 @@ async function createSeriesFromBuilt(built) {
 
     const [insertSeries] = await conn.query(
       `INSERT INTO series (
-         source_platform, source_series_id, content_origin, title, series_slug,
+         source_platform, source_series_id, content_origin, title, title2, series_slug,
          cover_url, type, status, rating, published_text, author, synopsis
-       ) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))`,
+       ) VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))`,
       [
         payload.source_platform,
         normalized.sourceSeriesId,
         payload.content_origin,
         payload.title,
+        payload.title2,
         payload.series_slug,
         payload.cover_url,
         payload.type,
@@ -239,6 +243,7 @@ function buildSeriesPayloadFromInput(input = {}) {
     source_series_id: String(input.source_series_id || '').trim(),
     content_origin: String(input.content_origin || '').trim(),
     title: String(input.title || '').trim(),
+    title2: String(input.title2 || '').trim(),
     series_slug: cleanSeriesSlug(input.series_slug),
     cover_url: String(rawCover || '').trim(),
     type: String(input.type || '').trim(),
@@ -464,6 +469,97 @@ function toSafeTimestampString(input) {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
+function startOfUtcDay(date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function startOfUtcWeekMonday(date) {
+  const dayStart = startOfUtcDay(date);
+  const day = dayStart.getUTCDay();
+  const diffToMonday = (day + 6) % 7;
+  dayStart.setUTCDate(dayStart.getUTCDate() - diffToMonday);
+  return dayStart;
+}
+
+function startOfUtcMonth(date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function buildXpLeaderboardWindow(periodInput) {
+  const period = String(periodInput || 'weekly').trim().toLowerCase();
+  const now = new Date();
+
+  if (period === 'all') {
+    return {
+      period: 'all',
+      windowStart: null,
+      windowEnd: null,
+      label: 'All Time'
+    };
+  }
+
+  if (period === 'daily') {
+    const windowStart = startOfUtcDay(now);
+    const windowEnd = new Date(windowStart);
+    windowEnd.setUTCDate(windowEnd.getUTCDate() + 1);
+    return { period: 'daily', windowStart, windowEnd, label: 'Daily (UTC)' };
+  }
+
+  if (period === 'monthly') {
+    const windowStart = startOfUtcMonth(now);
+    const windowEnd = new Date(windowStart);
+    windowEnd.setUTCMonth(windowEnd.getUTCMonth() + 1);
+    return { period: 'monthly', windowStart, windowEnd, label: 'Monthly (UTC)' };
+  }
+
+  const windowStart = startOfUtcWeekMonday(now);
+  const windowEnd = new Date(windowStart);
+  windowEnd.setUTCDate(windowEnd.getUTCDate() + 7);
+  return { period: 'weekly', windowStart, windowEnd, label: 'Weekly (UTC, Monday start)' };
+}
+
+function sanitizePremiumReturnPath(input) {
+  const fallback = '/admin/users/premium';
+  const value = String(input || '').trim();
+  if (!value.startsWith('/admin/users/premium')) return fallback;
+  return value;
+}
+
+function sanitizeUsersReturnPath(input, userId = 0) {
+  const fallback = userId > 0 ? `/admin/users/${userId}` : '/admin/users';
+  const value = String(input || '').trim();
+  if (!value.startsWith('/admin/users')) return fallback;
+  return value;
+}
+
+function buildNotificationApiConfig() {
+  const baseUrlRaw = String(process.env.PANEL_API_BASE_URL || '').trim().replace(/\/+$/, '');
+  const sendUrlRaw = String(process.env.NOTIFICATION_SEND_URL || '').trim();
+  const bearerToken = String(process.env.NOTIFICATION_BEARER_TOKEN || '').trim();
+  const adminSecret = String(
+    process.env.NOTIFICATIONS_ADMIN_SECRET
+      || process.env.NOTIFICATION_ADMIN_SECRET
+      || ''
+  ).trim();
+
+  const sendUrl = sendUrlRaw || (baseUrlRaw ? `${baseUrlRaw}/api/notifications/send` : '');
+  const authMode = adminSecret ? 'admin_secret' : (bearerToken ? 'bearer' : 'none');
+  return { sendUrl, bearerToken, adminSecret, authMode };
+}
+
+function generateIdempotencyKey() {
+  return `admin-notif-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function parseUserIdsCsv(input) {
+  const values = String(input || '')
+    .split(',')
+    .map((x) => Number(String(x).trim()))
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .map((n) => Math.trunc(n));
+  return Array.from(new Set(values));
+}
+
 function normalizeScheduleDay(input) {
   const day = String(input || '').trim().toLowerCase();
   return SCHEDULE_DAYS.includes(day) ? day : '';
@@ -579,9 +675,9 @@ function buildSeriesWhere(query) {
   const params = [];
 
   if (q) {
-    where.push('(s.title LIKE ? OR s.series_slug LIKE ?)');
+    where.push('(s.title LIKE ? OR s.title2 LIKE ? OR s.series_slug LIKE ?)');
     const like = `%${escapeLike(q)}%`;
-    params.push(like, like);
+    params.push(like, like, like);
   }
   if (origin) {
     where.push('s.content_origin = ?');
@@ -1181,6 +1277,7 @@ router.get('/schedule', async (req, res) => {
       rows,
       created: req.query.created === '1',
       deleted: req.query.deleted === '1',
+      deletedAll: req.query.deleted_all === '1',
       error: req.query.error ? String(req.query.error) : ''
     });
   } catch (err) {
@@ -1266,6 +1363,177 @@ router.post('/announcement', async (req, res) => {
   }
 });
 
+router.get('/notifications/send', (_req, res) => {
+  const { sendUrl, bearerToken, adminSecret, authMode } = buildNotificationApiConfig();
+  return res.render('admin-notifications-send', {
+    title: 'Push Notification',
+    saved: false,
+    error: '',
+    result: null,
+    payload: {
+      type: 'announcement',
+      title: '',
+      message: '',
+      imageUrl: '',
+      actionType: '',
+      actionValue: '',
+      actionLabel: '',
+      dedupeKey: '',
+      topic: '',
+      user_ids_csv: ''
+    },
+    configStatus: {
+      hasSendUrl: Boolean(sendUrl),
+      hasAdminSecret: Boolean(adminSecret),
+      hasBearerToken: Boolean(bearerToken),
+      authMode,
+      sendUrl
+    }
+  });
+});
+
+router.post('/notifications/send', async (req, res) => {
+  const input = {
+    type: String(req.body.type || 'announcement').trim().toLowerCase(),
+    title: String(req.body.title || '').trim(),
+    message: String(req.body.message || '').trim(),
+    imageUrl: String(req.body.imageUrl || '').trim(),
+    actionType: String(req.body.actionType || '').trim(),
+    actionValue: String(req.body.actionValue || '').trim(),
+    actionLabel: String(req.body.actionLabel || '').trim(),
+    dedupeKey: String(req.body.dedupeKey || '').trim(),
+    topic: String(req.body.topic || '').trim(),
+    user_ids_csv: String(req.body.user_ids_csv || '').trim(),
+    idempotencyKey: String(req.body.idempotencyKey || '').trim()
+  };
+
+  const { sendUrl, bearerToken, adminSecret, authMode } = buildNotificationApiConfig();
+  if (!sendUrl || (!adminSecret && !bearerToken)) {
+    return res.render('admin-notifications-send', {
+      title: 'Push Notification',
+      saved: false,
+      error: 'Config belum lengkap. Wajib isi PANEL_API_BASE_URL/NOTIFICATION_SEND_URL dan salah satu auth: NOTIFICATIONS_ADMIN_SECRET atau NOTIFICATION_BEARER_TOKEN',
+      result: null,
+      payload: input,
+      configStatus: {
+        hasSendUrl: Boolean(sendUrl),
+        hasAdminSecret: Boolean(adminSecret),
+        hasBearerToken: Boolean(bearerToken),
+        authMode,
+        sendUrl
+      }
+    });
+  }
+
+  if (!input.title || !input.message) {
+    return res.render('admin-notifications-send', {
+      title: 'Push Notification',
+      saved: false,
+      error: 'Field wajib: title dan message',
+      result: null,
+      payload: input,
+      configStatus: {
+        hasSendUrl: Boolean(sendUrl),
+        hasAdminSecret: Boolean(adminSecret),
+        hasBearerToken: Boolean(bearerToken),
+        authMode,
+        sendUrl
+      }
+    });
+  }
+
+  const userIds = parseUserIdsCsv(input.user_ids_csv);
+  if (!input.topic && !userIds.length) {
+    return res.render('admin-notifications-send', {
+      title: 'Push Notification',
+      saved: false,
+      error: 'Isi salah satu target: topic atau user_ids_csv',
+      result: null,
+      payload: input,
+      configStatus: {
+        hasSendUrl: Boolean(sendUrl),
+        hasAdminSecret: Boolean(adminSecret),
+        hasBearerToken: Boolean(bearerToken),
+        authMode,
+        sendUrl
+      }
+    });
+  }
+
+  const body = {
+    type: input.type || 'announcement',
+    title: input.title,
+    message: input.message
+  };
+  if (input.imageUrl) body.imageUrl = input.imageUrl;
+  if (input.actionType) body.actionType = input.actionType;
+  if (input.actionValue) body.actionValue = input.actionValue;
+  if (input.actionLabel) body.actionLabel = input.actionLabel;
+  if (input.dedupeKey) body.dedupeKey = input.dedupeKey;
+  if (input.topic) body.topic = input.topic;
+  if (userIds.length) body.userIds = userIds;
+
+  const idempotencyKey = input.idempotencyKey || generateIdempotencyKey();
+
+  try {
+    const headers = {
+      'Idempotency-Key': idempotencyKey
+    };
+    if (adminSecret) {
+      headers['x-admin-secret'] = adminSecret;
+    } else {
+      headers.Authorization = `Bearer ${bearerToken}`;
+    }
+
+    const response = await axios.post(sendUrl, body, {
+      timeout: 25000,
+      headers
+    });
+
+    return res.render('admin-notifications-send', {
+      title: 'Push Notification',
+      saved: true,
+      error: '',
+      result: {
+        status: Number(response.status || 200),
+        data: response.data || null,
+        idempotencyKey
+      },
+      payload: input,
+      configStatus: {
+        hasSendUrl: Boolean(sendUrl),
+        hasAdminSecret: Boolean(adminSecret),
+        hasBearerToken: Boolean(bearerToken),
+        authMode,
+        sendUrl
+      }
+    });
+  } catch (err) {
+    const status = err && err.response ? Number(err.response.status || 500) : 500;
+    const data = err && err.response ? err.response.data : null;
+    const message = err && err.message ? err.message : 'Gagal kirim notification';
+
+    return res.render('admin-notifications-send', {
+      title: 'Push Notification',
+      saved: false,
+      error: `${message}${data ? ` | response: ${JSON.stringify(data).slice(0, 500)}` : ''}`,
+      result: {
+        status,
+        data,
+        idempotencyKey
+      },
+      payload: input,
+      configStatus: {
+        hasSendUrl: Boolean(sendUrl),
+        hasAdminSecret: Boolean(adminSecret),
+        hasBearerToken: Boolean(bearerToken),
+        authMode,
+        sendUrl
+      }
+    });
+  }
+});
+
 router.get('/topanime', async (req, res) => {
   const q = String(req.query.q || '').trim();
   const active = String(req.query.active || '').trim();
@@ -1273,10 +1541,7 @@ router.get('/topanime', async (req, res) => {
   try {
     await ensureTopAnimeTable();
 
-    const where = [
-      "LOWER(COALESCE(s.content_origin, '')) = 'anime'",
-      "(s.type IS NULL OR LOWER(s.type) <> 'movie')"
-    ];
+    const where = [];
     const params = [];
 
     if (q) {
@@ -1346,9 +1611,7 @@ router.get('/topanime/series-search', async (req, res) => {
          status,
          rating
        FROM series
-       WHERE LOWER(COALESCE(content_origin, '')) = 'anime'
-         AND (type IS NULL OR LOWER(type) <> 'movie')
-         AND (title LIKE ? OR series_slug LIKE ?)
+       WHERE (title LIKE ? OR series_slug LIKE ?)
        ORDER BY title ASC
        LIMIT ?`,
       [like, like, limit]
@@ -1374,13 +1637,11 @@ router.post('/topanime/create', async (req, res) => {
       `SELECT id
        FROM series
        WHERE id = ?
-         AND LOWER(COALESCE(content_origin, '')) = 'anime'
-         AND (type IS NULL OR LOWER(type) <> 'movie')
        LIMIT 1`,
       [seriesId]
     );
     if (!series) {
-      return res.redirect('/admin/topanime?error=Series tidak valid untuk top anime (harus anime non-movie)');
+      return res.redirect('/admin/topanime?error=Series tidak ditemukan');
     }
 
     await pool.query(
@@ -1592,6 +1853,16 @@ router.post('/schedule/:id/delete', async (req, res) => {
   }
 });
 
+router.post('/schedule/delete-all', async (_req, res) => {
+  try {
+    await ensureScheduleTable();
+    await pool.query('DELETE FROM schedule_entries');
+    return res.redirect('/admin/schedule?deleted_all=1');
+  } catch (err) {
+    return res.redirect(`/admin/schedule?error=${encodeURIComponent(err.message || 'Gagal hapus semua jadwal')}`);
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
     const flashError = String(req.query.error || '').trim();
@@ -1681,6 +1952,695 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     res.status(500).send(err.message);
+  }
+});
+
+router.get('/users/premium', async (req, res) => {
+  const page = toInt(req.query.page, 1, 1, 100000);
+  const limit = 30;
+  const offset = (page - 1) * limit;
+  const q = String(req.query.q || '').trim();
+  const role = String(req.query.role || '').trim().toLowerCase();
+  const activeOnly = String(req.query.active_only || '1').trim() === '1';
+  const flashError = String(req.query.error || '').trim();
+  const flashSuccess = String(req.query.success || '').trim();
+
+  try {
+    const userTableExists = await checkUserTableExists('users');
+    if (!userTableExists) {
+      return res.render('admin-users-premium', {
+        title: 'Manage Premium',
+        rows: [],
+        page,
+        total: 0,
+        totalPages: 1,
+        q,
+        role,
+        activeOnly,
+        roleOptions: [],
+        tableMissing: true,
+        error: flashError,
+        success: flashSuccess
+      });
+    }
+
+    const [roleRows] = await userPool.query(
+      `SELECT LOWER(role) AS role_value
+       FROM users
+       WHERE role IS NOT NULL AND role <> ''
+       GROUP BY role_value
+       ORDER BY role_value ASC`
+    );
+
+    const where = [];
+    const params = [];
+    if (role) {
+      where.push('LOWER(u.role) = ?');
+      params.push(role);
+    } else {
+      where.push('u.premium_expires_at IS NOT NULL');
+      if (activeOnly) where.push('u.premium_expires_at > NOW()');
+    }
+    if (q) {
+      const like = `%${escapeLike(q)}%`;
+      where.push('(u.name LIKE ? OR u.email LIKE ? OR CAST(u.id AS CHAR) LIKE ?)');
+      params.push(like, like, like);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [[countRow]] = await userPool.query(
+      `SELECT COUNT(*) AS total
+       FROM users u
+       ${whereSql}`,
+      params
+    );
+    const total = Number(countRow && countRow.total ? countRow.total : 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    const [rowsRaw] = await userPool.query(
+      `SELECT
+         u.id,
+         u.email,
+         u.name,
+         u.role,
+         u.is_active,
+         u.is_private,
+         u.premium_expires_at,
+         u.level,
+         u.xp_total,
+         u.last_seen_at,
+         (u.premium_expires_at IS NOT NULL AND u.premium_expires_at > NOW()) AS premium_active
+       FROM users u
+       ${whereSql}
+       ORDER BY u.premium_expires_at DESC, u.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    const rows = rowsRaw.map((r) => ({
+      ...r,
+      premium_expires_at_text: toSafeTimestampString(r.premium_expires_at),
+      last_seen_at_text: toSafeTimestampString(r.last_seen_at)
+    }));
+
+    return res.render('admin-users-premium', {
+      title: 'Manage Premium',
+      rows,
+      page,
+      total,
+      totalPages,
+      q,
+      role,
+      activeOnly,
+      roleOptions: roleRows.map((x) => String(x.role_value || '')).filter(Boolean),
+      tableMissing: false,
+      error: flashError,
+      success: flashSuccess
+    });
+  } catch (err) {
+    return res.status(500).send(err.message);
+  }
+});
+
+router.post('/users/:id/premium/add', async (req, res) => {
+  const userId = toInt(req.params.id, 0, 1, Number.MAX_SAFE_INTEGER);
+  const days = toInt(req.body.days, 0, 1, 3650);
+  const returnTo = sanitizePremiumReturnPath(req.body.return_to);
+
+  if (!userId) return res.redirect(`${returnTo}?error=${encodeURIComponent('userId tidak valid')}`);
+  if (!days) return res.redirect(`${returnTo}?error=${encodeURIComponent('days harus angka 1-3650')}`);
+
+  let conn;
+  try {
+    const userTableExists = await checkUserTableExists('users');
+    if (!userTableExists) {
+      return res.redirect(`${returnTo}?error=${encodeURIComponent('Table users tidak ditemukan di user DB')}`);
+    }
+
+    conn = await userPool.getConnection();
+    await conn.beginTransaction();
+
+    const [[target]] = await conn.query(
+      'SELECT id, premium_expires_at FROM users WHERE id = ? LIMIT 1 FOR UPDATE',
+      [userId]
+    );
+    if (!target) {
+      await conn.rollback();
+      return res.redirect(`${returnTo}?error=${encodeURIComponent(`User #${userId} tidak ditemukan`)}`);
+    }
+
+    const nowMs = Date.now();
+    const currentExpiryMs = target.premium_expires_at ? new Date(target.premium_expires_at).getTime() : 0;
+    const baseMs = currentExpiryMs > nowMs ? currentExpiryMs : nowMs;
+    const nextExpiry = new Date(baseMs + (days * 24 * 60 * 60 * 1000));
+
+    await conn.query(
+      'UPDATE users SET premium_expires_at = ? WHERE id = ? LIMIT 1',
+      [nextExpiry, userId]
+    );
+
+    await conn.commit();
+    return res.redirect(`${returnTo}?success=${encodeURIComponent(`Premium user #${userId} +${days} hari`)}`);
+  } catch (err) {
+    if (conn) await conn.rollback();
+    return res.redirect(`${returnTo}?error=${encodeURIComponent(err.message || 'Gagal update premium')}`);
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+router.post('/users/:id/premium/revoke', async (req, res) => {
+  const userId = toInt(req.params.id, 0, 1, Number.MAX_SAFE_INTEGER);
+  const returnTo = sanitizePremiumReturnPath(req.body.return_to);
+
+  if (!userId) return res.redirect(`${returnTo}?error=${encodeURIComponent('userId tidak valid')}`);
+
+  try {
+    const userTableExists = await checkUserTableExists('users');
+    if (!userTableExists) {
+      return res.redirect(`${returnTo}?error=${encodeURIComponent('Table users tidak ditemukan di user DB')}`);
+    }
+
+    const [result] = await userPool.query(
+      'UPDATE users SET premium_expires_at = NULL WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!result.affectedRows) {
+      return res.redirect(`${returnTo}?error=${encodeURIComponent(`User #${userId} tidak ditemukan`)}`);
+    }
+    return res.redirect(`${returnTo}?success=${encodeURIComponent(`Premium user #${userId} direvoke`)}`);
+  } catch (err) {
+    return res.redirect(`${returnTo}?error=${encodeURIComponent(err.message || 'Gagal revoke premium')}`);
+  }
+});
+
+router.get('/leaderboard-xp', async (req, res) => {
+  const page = toInt(req.query.page, 1, 1, 100000);
+  const limit = toInt(req.query.limit, 50, 1, 100);
+  const offset = (page - 1) * limit;
+  const q = String(req.query.q || '').trim();
+  const window = buildXpLeaderboardWindow(req.query.period);
+
+  try {
+    const userTableExists = await checkUserTableExists('users');
+    const xpLedgerExists = await checkUserTableExists('user_xp_ledger');
+    if (!userTableExists || !xpLedgerExists) {
+      return res.render('admin-leaderboard-xp', {
+        title: 'Leaderboard XP',
+        rows: [],
+        page,
+        total: 0,
+        totalPages: 1,
+        q,
+        limit,
+        period: window.period,
+        periodLabel: window.label,
+        windowStartText: '',
+        windowEndText: '',
+        tableMissing: true,
+        error: (!userTableExists ? 'users ' : '') + (!xpLedgerExists ? 'user_xp_ledger' : '')
+      });
+    }
+
+    const joinDateSql = window.period === 'all'
+      ? ''
+      : 'AND l.created_at >= ? AND l.created_at < ?';
+
+    const where = ['u.is_private = 0'];
+    const whereParams = [];
+    if (q) {
+      const like = `%${escapeLike(q)}%`;
+      where.push('(u.name LIKE ? OR u.email LIKE ? OR CAST(u.id AS CHAR) LIKE ?)');
+      whereParams.push(like, like, like);
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+
+    const leaderboardParams = [];
+    if (window.period !== 'all') leaderboardParams.push(window.windowStart, window.windowEnd);
+    leaderboardParams.push(...whereParams);
+    leaderboardParams.push(limit, offset);
+
+    const [rowsRaw] = await userPool.query(
+      `SELECT
+         u.id AS user_id,
+         u.name AS user_name,
+         u.email AS user_email,
+         u.level AS user_level,
+         u.role AS user_role,
+         u.premium_expires_at AS user_premium_expires_at,
+         COALESCE(SUM(l.xp_delta), 0) AS xp_gained
+       FROM users u
+       LEFT JOIN user_xp_ledger l
+         ON l.user_id = u.id
+         ${joinDateSql}
+       ${whereSql}
+       GROUP BY u.id, u.name, u.email, u.level, u.role, u.premium_expires_at
+       HAVING xp_gained > 0
+       ORDER BY xp_gained DESC, u.id ASC
+       LIMIT ? OFFSET ?`,
+      leaderboardParams
+    );
+
+    const totalParams = [];
+    if (window.period !== 'all') totalParams.push(window.windowStart, window.windowEnd);
+    totalParams.push(...whereParams);
+
+    const [[countRow]] = await userPool.query(
+      `SELECT COUNT(*) AS total
+       FROM (
+         SELECT u.id
+         FROM users u
+         LEFT JOIN user_xp_ledger l
+           ON l.user_id = u.id
+           ${joinDateSql}
+         ${whereSql}
+         GROUP BY u.id
+         HAVING COALESCE(SUM(l.xp_delta), 0) > 0
+       ) counted`,
+      totalParams
+    );
+
+    const total = Number(countRow && countRow.total ? countRow.total : 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const rows = rowsRaw.map((r, idx) => ({
+      ...r,
+      rank_no: offset + idx + 1,
+      premium_expires_at_text: toSafeTimestampString(r.user_premium_expires_at)
+    }));
+
+    return res.render('admin-leaderboard-xp', {
+      title: 'Leaderboard XP',
+      rows,
+      page,
+      total,
+      totalPages,
+      q,
+      limit,
+      period: window.period,
+      periodLabel: window.label,
+      windowStartText: toSafeTimestampString(window.windowStart),
+      windowEndText: toSafeTimestampString(window.windowEnd),
+      tableMissing: false,
+      error: ''
+    });
+  } catch (err) {
+    return res.status(500).send(err.message);
+  }
+});
+
+router.get('/users', async (req, res) => {
+  const page = toInt(req.query.page, 1, 1, 100000);
+  const limit = 30;
+  const offset = (page - 1) * limit;
+  const q = String(req.query.q || '').trim();
+  const role = String(req.query.role || '').trim().toLowerCase();
+  const premium = String(req.query.premium || '').trim().toLowerCase();
+  const active = String(req.query.active || '').trim().toLowerCase();
+  const flashError = String(req.query.error || '').trim();
+  const flashSuccess = String(req.query.success || '').trim();
+
+  try {
+    const exists = await checkUserTableExists('users');
+    if (!exists) {
+      return res.render('admin-users', {
+        title: 'User Dashboard',
+        rows: [],
+        page,
+        total: 0,
+        totalPages: 1,
+        q,
+        role,
+        premium,
+        active,
+        roleOptions: [],
+        tableMissing: true,
+        error: flashError,
+        success: flashSuccess
+      });
+    }
+
+    const [roleRows] = await userPool.query(
+      `SELECT LOWER(role) AS role_value
+       FROM users
+       WHERE role IS NOT NULL AND role <> ''
+       GROUP BY role_value
+       ORDER BY role_value ASC`
+    );
+
+    const where = [];
+    const params = [];
+
+    if (q) {
+      const like = `%${escapeLike(q)}%`;
+      where.push('(CAST(u.id AS CHAR) LIKE ? OR u.name LIKE ? OR u.email LIKE ? OR u.firebase_uid LIKE ?)');
+      params.push(like, like, like, like);
+    }
+    if (role) {
+      where.push('LOWER(u.role) = ?');
+      params.push(role);
+    }
+    if (premium === 'active') {
+      where.push('u.premium_expires_at IS NOT NULL AND u.premium_expires_at > NOW()');
+    } else if (premium === 'expired') {
+      where.push('u.premium_expires_at IS NOT NULL AND u.premium_expires_at <= NOW()');
+    } else if (premium === 'none') {
+      where.push('u.premium_expires_at IS NULL');
+    }
+    if (active === 'yes') {
+      where.push('u.is_active = 1');
+    } else if (active === 'no') {
+      where.push('u.is_active = 0');
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [[countRow]] = await userPool.query(
+      `SELECT COUNT(*) AS total
+       FROM users u
+       ${whereSql}`,
+      params
+    );
+    const total = Number(countRow && countRow.total ? countRow.total : 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    const [rowsRaw] = await userPool.query(
+      `SELECT
+         u.id,
+         u.firebase_uid,
+         u.email,
+         u.name,
+         u.role,
+         u.is_active,
+         u.is_private,
+         u.premium_expires_at,
+         u.level,
+         u.xp_total,
+         u.created_at,
+         u.last_seen_at,
+         CASE
+           WHEN u.premium_expires_at IS NULL THEN 'none'
+           WHEN u.premium_expires_at <= NOW() THEN 'expired'
+           ELSE 'active'
+         END AS premium_kind
+       FROM users u
+       ${whereSql}
+       ORDER BY u.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    const rows = rowsRaw.map((r) => ({
+      ...r,
+      premium_expires_at_text: toSafeTimestampString(r.premium_expires_at),
+      created_at_text: toSafeTimestampString(r.created_at),
+      last_seen_at_text: toSafeTimestampString(r.last_seen_at)
+    }));
+
+    return res.render('admin-users', {
+      title: 'User Dashboard',
+      rows,
+      page,
+      total,
+      totalPages,
+      q,
+      role,
+      premium,
+      active,
+      roleOptions: roleRows.map((x) => String(x.role_value || '')).filter(Boolean),
+      tableMissing: false,
+      error: flashError,
+      success: flashSuccess
+    });
+  } catch (err) {
+    return res.status(500).send(err.message);
+  }
+});
+
+router.post('/users/:id(\\d+)/reset-xp', async (req, res) => {
+  const userId = toInt(req.params.id, 0, 1, Number.MAX_SAFE_INTEGER);
+  const returnTo = sanitizeUsersReturnPath(req.body.return_to, userId);
+  if (!userId) return res.redirect(`${returnTo}?error=${encodeURIComponent('userId tidak valid')}`);
+
+  let conn;
+  try {
+    const usersExists = await checkUserTableExists('users');
+    if (!usersExists) {
+      return res.redirect(`${returnTo}?error=${encodeURIComponent('Table users tidak ditemukan di user DB')}`);
+    }
+    const xpLedgerExists = await checkUserTableExists('user_xp_ledger');
+    const xpStateExists = await checkUserTableExists('user_watch_xp_state');
+    const watchProgressExists = await checkUserTableExists('watch_progress');
+
+    conn = await userPool.getConnection();
+    await conn.beginTransaction();
+
+    const [[user]] = await conn.query(
+      'SELECT id FROM users WHERE id = ? LIMIT 1 FOR UPDATE',
+      [userId]
+    );
+    if (!user) {
+      await conn.rollback();
+      return res.redirect(`${returnTo}?error=${encodeURIComponent(`User #${userId} tidak ditemukan`)}`);
+    }
+
+    if (xpLedgerExists) {
+      await conn.query('DELETE FROM user_xp_ledger WHERE user_id = ?', [userId]);
+    }
+    if (xpStateExists) {
+      await conn.query('DELETE FROM user_watch_xp_state WHERE user_id = ?', [userId]);
+    }
+    if (watchProgressExists) {
+      await conn.query('DELETE FROM watch_progress WHERE user_id = ?', [userId]);
+    }
+    try {
+      await conn.query(
+        'UPDATE users SET xp_total = 0, level = 1, xp_updated_at = NOW() WHERE id = ? LIMIT 1',
+        [userId]
+      );
+    } catch (err) {
+      if (!err || err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      await conn.query(
+        'UPDATE users SET xp_total = 0, level = 1 WHERE id = ? LIMIT 1',
+        [userId]
+      );
+    }
+
+    await conn.commit();
+    return res.redirect(`${returnTo}?success=${encodeURIComponent(`User #${userId} level/xp direset + history dihapus`)}`);
+  } catch (err) {
+    if (conn) await conn.rollback();
+    return res.redirect(`${returnTo}?error=${encodeURIComponent(err.message || 'Gagal reset level/xp')}`);
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+router.post('/users/:id(\\d+)/set-level-xp', async (req, res) => {
+  const userId = toInt(req.params.id, 0, 1, Number.MAX_SAFE_INTEGER);
+  const returnTo = sanitizeUsersReturnPath(req.body.return_to, userId);
+  const level = toInt(req.body.level, 0, 1, 1000000);
+  const xpTotal = toInt(req.body.xp_total, -1, 0, Number.MAX_SAFE_INTEGER);
+
+  if (!userId) return res.redirect(`${returnTo}?error=${encodeURIComponent('userId tidak valid')}`);
+  if (!level) return res.redirect(`${returnTo}?error=${encodeURIComponent('level harus angka >= 1')}`);
+  if (xpTotal < 0) return res.redirect(`${returnTo}?error=${encodeURIComponent('xp_total harus angka >= 0')}`);
+
+  try {
+    const usersExists = await checkUserTableExists('users');
+    if (!usersExists) {
+      return res.redirect(`${returnTo}?error=${encodeURIComponent('Table users tidak ditemukan di user DB')}`);
+    }
+
+    try {
+      const [result] = await userPool.query(
+        'UPDATE users SET level = ?, xp_total = ?, xp_updated_at = NOW() WHERE id = ? LIMIT 1',
+        [level, xpTotal, userId]
+      );
+      if (!result.affectedRows) {
+        return res.redirect(`${returnTo}?error=${encodeURIComponent(`User #${userId} tidak ditemukan`)}`);
+      }
+    } catch (err) {
+      if (!err || err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      const [result] = await userPool.query(
+        'UPDATE users SET level = ?, xp_total = ? WHERE id = ? LIMIT 1',
+        [level, xpTotal, userId]
+      );
+      if (!result.affectedRows) {
+        return res.redirect(`${returnTo}?error=${encodeURIComponent(`User #${userId} tidak ditemukan`)}`);
+      }
+    }
+
+    return res.redirect(`${returnTo}?success=${encodeURIComponent(`User #${userId} level/xp diupdate`)}`);
+  } catch (err) {
+    return res.redirect(`${returnTo}?error=${encodeURIComponent(err.message || 'Gagal update level/xp')}`);
+  }
+});
+
+router.get('/users/:id(\\d+)', async (req, res) => {
+  const userId = toInt(req.params.id, 0, 1, Number.MAX_SAFE_INTEGER);
+  const flashError = String(req.query.error || '').trim();
+  const flashSuccess = String(req.query.success || '').trim();
+
+  try {
+    const usersExists = await checkUserTableExists('users');
+    if (!usersExists) {
+      return res.status(404).send('Table users tidak ditemukan di user DB');
+    }
+
+    const [[user]] = await userPool.query(
+      `SELECT
+         id,
+         firebase_uid,
+         email,
+         name,
+         avatar_url,
+         banner_url,
+         role,
+         is_active,
+         is_private,
+         premium_expires_at,
+         xp_total,
+         level,
+         created_at,
+         last_seen_at
+       FROM users
+       WHERE id = ?
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (!user) {
+      return res.status(404).send('User tidak ditemukan');
+    }
+
+    const [commentTableExists, historyTableExists, favoriteTableExists, bannedTableExists] = await Promise.all([
+      checkUserTableExists('episode_comments'),
+      checkUserTableExists('watch_progress'),
+      checkUserTableExists('anime_favorites'),
+      checkUserTableExists('list_banned')
+    ]);
+
+    let commentCount = 0;
+    let historyCount = 0;
+    let favoriteCount = 0;
+    let activeBanCount = 0;
+
+    const comments = [];
+    const histories = [];
+    const favorites = [];
+    const bans = [];
+
+    if (commentTableExists) {
+      const [[row]] = await userPool.query('SELECT COUNT(*) AS total FROM episode_comments WHERE user_id = ?', [userId]);
+      commentCount = Number(row && row.total ? row.total : 0);
+      const [rows] = await userPool.query(
+        `SELECT id, anime_title, episode_url, content, created_at
+         FROM episode_comments
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT 15`,
+        [userId]
+      );
+      comments.push(...rows.map((r) => ({ ...r, created_at_text: toSafeTimestampString(r.created_at) })));
+    }
+
+    if (historyTableExists) {
+      const [[row]] = await userPool.query('SELECT COUNT(*) AS total FROM watch_progress WHERE user_id = ?', [userId]);
+      historyCount = Number(row && row.total ? row.total : 0);
+      const [rows] = await userPool.query(
+        `SELECT id, anime_title, episode_label, episode_url, progress_percent, updated_at
+         FROM watch_progress
+         WHERE user_id = ?
+         ORDER BY updated_at DESC
+         LIMIT 15`,
+        [userId]
+      );
+      histories.push(...rows.map((r) => ({ ...r, updated_at_text: toSafeTimestampString(r.updated_at) })));
+    }
+
+    if (favoriteTableExists) {
+      const [[row]] = await userPool.query('SELECT COUNT(*) AS total FROM anime_favorites WHERE user_id = ?', [userId]);
+      favoriteCount = Number(row && row.total ? row.total : 0);
+      const [rows] = await userPool.query(
+        `SELECT id, anime_title, series_url, created_at
+         FROM anime_favorites
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT 15`,
+        [userId]
+      );
+      favorites.push(...rows.map((r) => ({ ...r, created_at_text: toSafeTimestampString(r.created_at) })));
+    }
+
+    if (bannedTableExists) {
+      const [[row]] = await userPool.query(
+        `SELECT COUNT(*) AS total
+         FROM list_banned
+         WHERE user_id = ?
+           AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > NOW())`,
+        [userId]
+      );
+      activeBanCount = Number(row && row.total ? row.total : 0);
+      const [rows] = await userPool.query(
+        `SELECT
+           id,
+           device_id,
+           reason,
+           banned_by,
+           expires_at,
+           revoked_at,
+           created_at,
+           CASE
+             WHEN revoked_at IS NOT NULL THEN 'revoked'
+             WHEN expires_at IS NOT NULL AND expires_at <= NOW() THEN 'expired'
+             ELSE 'active'
+           END AS status_kind
+         FROM list_banned
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [userId]
+      );
+      bans.push(
+        ...rows.map((r) => ({
+          ...r,
+          expires_at_text: toSafeTimestampString(r.expires_at),
+          revoked_at_text: toSafeTimestampString(r.revoked_at),
+          created_at_text: toSafeTimestampString(r.created_at)
+        }))
+      );
+    }
+
+    return res.render('admin-user-detail', {
+      title: `User #${userId}`,
+      user: {
+        ...user,
+        premium_expires_at_text: toSafeTimestampString(user.premium_expires_at),
+        created_at_text: toSafeTimestampString(user.created_at),
+        last_seen_at_text: toSafeTimestampString(user.last_seen_at)
+      },
+      stats: {
+        comments: commentCount,
+        history: historyCount,
+        favorites: favoriteCount,
+        activeBans: activeBanCount
+      },
+      comments,
+      histories,
+      favorites,
+      bans,
+      tableFlags: {
+        commentTableExists,
+        historyTableExists,
+        favoriteTableExists,
+        bannedTableExists
+      },
+      error: flashError,
+      success: flashSuccess
+    });
+  } catch (err) {
+    return res.status(500).send(err.message);
   }
 });
 
@@ -2104,6 +3064,7 @@ router.get('/series', async (req, res) => {
          s.source_series_id,
          s.content_origin,
          s.title,
+         s.title2,
          s.series_slug,
          s.status,
          s.type,
@@ -2555,20 +3516,21 @@ router.post('/import-json-all', async (req, res) => {
       const { payload, normalized } = row;
       try {
         await conn.beginTransaction();
-        const [ins] = await conn.query(
-          `INSERT INTO series (
-             source_platform, source_series_id, content_origin, title, series_slug,
-             cover_url, type, status, rating, published_text, author, synopsis
-           ) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))`,
-          [
-            payload.source_platform,
-            normalized.sourceSeriesId,
-            payload.content_origin,
-            payload.title,
-            payload.series_slug,
-            payload.cover_url,
-            payload.type,
-            payload.status,
+    const [ins] = await conn.query(
+      `INSERT INTO series (
+         source_platform, source_series_id, content_origin, title, title2, series_slug,
+         cover_url, type, status, rating, published_text, author, synopsis
+       ) VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))`,
+      [
+        payload.source_platform,
+        normalized.sourceSeriesId,
+        payload.content_origin,
+        payload.title,
+        payload.title2,
+        payload.series_slug,
+        payload.cover_url,
+        payload.type,
+        payload.status,
             normalized.ratingValue,
             payload.published_text,
             payload.author,
@@ -2811,14 +3773,15 @@ router.post('/series/import-json', async (req, res) => {
 
         const [insertSeries] = await conn.query(
           `INSERT INTO series (
-             source_platform, source_series_id, content_origin, title, series_slug,
+             source_platform, source_series_id, content_origin, title, title2, series_slug,
              cover_url, type, status, rating, published_text, author, synopsis
-           ) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))`,
+           ) VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))`,
           [
             payload.source_platform,
             normalized.sourceSeriesId,
             payload.content_origin,
             payload.title,
+            payload.title2,
             payload.series_slug,
             payload.cover_url,
             payload.type,
@@ -3077,7 +4040,7 @@ router.get('/series/:id', async (req, res) => {
   try {
     const [[series]] = await pool.query(
       `SELECT
-         id, source_platform, source_series_id, content_origin, title, series_slug, cover_url,
+         id, source_platform, source_series_id, content_origin, title, title2, series_slug, cover_url,
          type, status, rating, published_text, author, synopsis, created_at, updated_at
        FROM series
        WHERE id = ?
@@ -3137,7 +4100,7 @@ router.get('/series/:id/edit', async (req, res) => {
   try {
     const [[series]] = await pool.query(
       `SELECT
-         id, source_platform, source_series_id, content_origin, title, series_slug, cover_url,
+         id, source_platform, source_series_id, content_origin, title, title2, series_slug, cover_url,
          type, status, rating, published_text, author, synopsis
        FROM series
        WHERE id = ?
@@ -3175,6 +4138,7 @@ router.post('/series/:id/edit', async (req, res) => {
     source_series_id: String(req.body.source_series_id || '').trim(),
     content_origin: String(req.body.content_origin || '').trim(),
     title: String(req.body.title || '').trim(),
+    title2: String(req.body.title2 || '').trim(),
     series_slug: cleanSeriesSlug(req.body.series_slug),
     cover_url: String(req.body.cover_url || '').trim(),
     type: String(req.body.type || '').trim(),
@@ -3254,6 +4218,7 @@ router.post('/series/:id/edit', async (req, res) => {
            source_series_id = ?,
            content_origin = ?,
            title = ?,
+           title2 = NULLIF(?, ''),
            series_slug = ?,
            cover_url = NULLIF(?, ''),
            type = NULLIF(?, ''),
@@ -3270,6 +4235,7 @@ router.post('/series/:id/edit', async (req, res) => {
         sourceSeriesId,
         payload.content_origin,
         payload.title,
+        payload.title2,
         payload.series_slug,
         payload.cover_url,
         payload.type,

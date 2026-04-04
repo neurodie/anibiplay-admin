@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send" class="active">Push Notif</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Push Notification Sender</h1>
+      <p class="muted">Admin panel ini akan kirim ke endpoint panel API menggunakan bearer dari <span class="mono">.env</span>.</p>
+    </section>
+
+    <section class="card">
+      <h3>Config Status</h3>
+      <ul class="metric-list">
+        <li><span>Send URL</span><strong><%= configStatus.hasSendUrl ? 'ready' : 'missing' %></strong></li>
+        <li><span>Admin Secret</span><strong><%= configStatus.hasAdminSecret ? 'ready' : 'missing' %></strong></li>
+        <li><span>Bearer Token</span><strong><%= configStatus.hasBearerToken ? 'ready' : 'missing' %></strong></li>
+        <li><span>Auth Mode</span><strong><%= configStatus.authMode || 'none' %></strong></li>
+      </ul>
+      <p class="muted mono">URL: <%= configStatus.sendUrl || '-' %></p>
+    </section>
+
+    <% if (saved) { %>
+      <p class="alert ok">Notification request berhasil dikirim.</p>
+    <% } %>
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <% if (result) { %>
+      <section class="card">
+        <h3>Last Response</h3>
+        <p class="muted mono">status: <%= result.status %> | idempotency: <%= result.idempotencyKey || '-' %></p>
+        <pre class="mono" style="white-space:pre-wrap; background:#f3f8f4; border:1px solid #e3ebe4; padding:10px; border-radius:10px;"><%= JSON.stringify(result.data || {}, null, 2) %></pre>
+      </section>
+    <% } %>
+
+    <form method="post" action="/admin/notifications/send" class="card form-grid">
+      <div>
+        <label for="type">Type</label>
+        <input id="type" name="type" value="<%= payload.type || 'announcement' %>" placeholder="announcement" />
+      </div>
+      <div>
+        <label for="idempotencyKey">Idempotency Key (opsional)</label>
+        <input id="idempotencyKey" name="idempotencyKey" value="<%= payload.idempotencyKey || '' %>" placeholder="notif-20260404-001" />
+      </div>
+
+      <div class="full">
+        <label for="title">Title *</label>
+        <input id="title" name="title" value="<%= payload.title || '' %>" required />
+      </div>
+
+      <div class="full">
+        <label for="message">Message *</label>
+        <textarea id="message" name="message" rows="4" required><%= payload.message || '' %></textarea>
+      </div>
+
+      <div class="full">
+        <label for="imageUrl">Image URL</label>
+        <input id="imageUrl" name="imageUrl" value="<%= payload.imageUrl || '' %>" placeholder="https://cdn.example.com/poster.jpg" />
+      </div>
+
+      <div>
+        <label for="actionType">Action Type</label>
+        <input id="actionType" name="actionType" value="<%= payload.actionType || '' %>" placeholder="open_episode" />
+      </div>
+      <div>
+        <label for="actionValue">Action Value</label>
+        <input id="actionValue" name="actionValue" value="<%= payload.actionValue || '' %>" placeholder="oshi-no-ko-s3-11" />
+      </div>
+
+      <div>
+        <label for="actionLabel">Action Label</label>
+        <input id="actionLabel" name="actionLabel" value="<%= payload.actionLabel || '' %>" placeholder="Tonton" />
+      </div>
+      <div>
+        <label for="dedupeKey">Dedupe Key</label>
+        <input id="dedupeKey" name="dedupeKey" value="<%= payload.dedupeKey || '' %>" placeholder="episode:oshi-no-ko:s3:11" />
+      </div>
+
+      <div class="full">
+        <label for="topic">Topic (isi ini untuk broadcast)</label>
+        <input id="topic" name="topic" value="<%= payload.topic || '' %>" placeholder="global-news" />
+      </div>
+
+      <div class="full">
+        <label for="user_ids_csv">User IDs CSV (isi ini untuk targeted user, contoh: 1,2,3)</label>
+        <input id="user_ids_csv" name="user_ids_csv" value="<%= payload.user_ids_csv || '' %>" />
+      </div>
+
+      <div class="full inline-actions">
+        <button type="submit" class="btn">Send Notification</button>
+        <a class="btn ghost" href="/admin/notifications/send">Reset</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

@@ -23,8 +23,12 @@
         <a href="/admin/schedule">Schedule</a>
         <a href="/admin/updater">Updater</a>
         <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
         <a href="/admin/episode-error-reports">Error Reports</a>
         <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
       </nav>
       <form method="post" action="/admin/logout">
         <button type="submit" class="btn ghost">Logout</button>
@@ -141,6 +145,7 @@
               <th>Source ID</th>
               <th>Origin</th>
               <th>Title</th>
+              <th>Title2</th>
               <th>Slug</th>
               <th>Type</th>
               <th>Status</th>
@@ -157,6 +162,7 @@
                 <td class="mono"><%= s.source_series_id %></td>
                 <td><%= s.content_origin %></td>
                 <td><a href="/admin/series/<%= s.id %>"><%= s.title %></a></td>
+                <td><%= s.title2 || '-' %></td>
                 <td class="mono"><%= s.series_slug %></td>
                 <td><%= s.type || '-' %></td>
                 <td><%= s.status || '-' %></td>
@@ -169,7 +175,7 @@
             <% }); %>
             <% if (!rows.length) { %>
               <tr>
-                <td colspan="11" class="muted">Tidak ada data untuk filter ini.</td>
+                <td colspan="12" class="muted">Tidak ada data untuk filter ini.</td>
               </tr>
             <% } %>
           </tbody>

@@ -20,8 +20,12 @@
         <a href="/admin/schedule">Schedule</a>
         <a href="/admin/updater">Updater</a>
         <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
         <a href="/admin/episode-error-reports">Error Reports</a>
         <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
       </nav>
       <form method="post" action="/admin/logout"><button type="submit" class="btn ghost">Logout</button></form>
     </div>
@@ -60,6 +64,7 @@
       "source_series_id": 605,
       "content_origin": "anime",
       "title": "Black Clover",
+      "title2": "Black Clover (TV)",
       "series_slug": "black-clover",
       "cover_url": "https://cdn.example.com/black-clover.jpg",
       "type": "TV",
@@ -97,6 +102,9 @@
     }
   ]
 }</pre>
+      <p class="muted" style="margin-top:8px;">Wajib (series): <span class="mono">source_platform, source_series_id, content_origin, title, series_slug</span>. <span class="mono">title2</span> opsional.</p>
+      <p class="muted">Wajib (episodes): <span class="mono">source_platform, source_episode_id, series_slug, chapter_slug</span>.</p>
+      <p class="muted">Wajib (streams): <span class="mono">chapter_slug, resolution, stream_url</span>.</p>
       <p class="muted" style="margin-top:8px;">Mode aman: episode wajib resolve pakai <span class="mono">source_platform + series_slug</span>.</p>
       <p class="muted">Mode aman: stream wajib resolve pakai <span class="mono">chapter_slug</span>.</p>
     </section>

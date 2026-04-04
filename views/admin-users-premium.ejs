@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium" class="active">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Manage Premium Users</h1>
+      <p class="muted">Kelola perpanjangan premium dan revoke premium user.</p>
+    </section>
+
+    <% if (success) { %>
+      <p class="alert ok"><%= success %></p>
+    <% } %>
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <form method="get" action="/admin/users/premium" class="card filters-advanced">
+      <div>
+        <label for="q">Search</label>
+        <input id="q" name="q" value="<%= q %>" placeholder="ID / name / email" />
+      </div>
+      <div>
+        <label for="role">Role</label>
+        <select id="role" name="role">
+          <option value="">Premium users</option>
+          <% roleOptions.forEach((x) => { %>
+            <option value="<%= x %>" <%= role === x ? 'selected' : '' %>><%= x %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div>
+        <label for="active_only">Status</label>
+        <select id="active_only" name="active_only">
+          <option value="1" <%= activeOnly ? 'selected' : '' %>>Active only</option>
+          <option value="0" <%= !activeOnly ? 'selected' : '' %>>All (with expiry)</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit" class="btn">Apply</button>
+        <a href="/admin/users/premium" class="btn ghost">Reset</a>
+      </div>
+    </form>
+
+    <section class="card">
+      <div class="section-head">
+        <p class="muted mono">Total: <%= Number(total).toLocaleString('id-ID') %> | Page <%= page %>/<%= totalPages %></p>
+      </div>
+
+      <% if (tableMissing) { %>
+        <p class="muted">Table <span class="mono">users</span> tidak ditemukan di user DB.</p>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Level</th>
+                <th>XP</th>
+                <th>Premium Expires</th>
+                <th>Last Seen</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% rows.forEach((u) => { %>
+                <tr>
+                  <td class="mono"><%= u.id %></td>
+                  <td><%= u.name || '-' %></td>
+                  <td><%= u.email || '-' %></td>
+                  <td><span class="chip"><%= u.role || '-' %></span></td>
+                  <td><%= Number(u.level || 1) %></td>
+                  <td><%= Number(u.xp_total || 0).toLocaleString('id-ID') %></td>
+                  <td>
+                    <span class="mono"><%= u.premium_expires_at_text || '-' %></span>
+                    <% if (Number(u.premium_active || 0) === 1) { %>
+                      <span class="chip">active</span>
+                    <% } else { %>
+                      <span class="chip">expired</span>
+                    <% } %>
+                  </td>
+                  <td class="mono"><%= u.last_seen_at_text || '-' %></td>
+                  <td>
+                    <div class="action-row">
+                      <form method="post" action="/admin/users/<%= u.id %>/premium/add" class="inline-actions">
+                        <input type="hidden" name="return_to" value="/admin/users/premium?q=<%= encodeURIComponent(q) %>&role=<%= encodeURIComponent(role) %>&active_only=<%= activeOnly ? '1' : '0' %>&page=<%= page %>" />
+                        <input name="days" type="number" min="1" max="3650" value="30" style="width:90px;" />
+                        <button type="submit" class="btn ghost">+ Days</button>
+                      </form>
+                      <form method="post" action="/admin/users/<%= u.id %>/premium/revoke" onsubmit="return confirm('Revoke premium user ini?')">
+                        <input type="hidden" name="return_to" value="/admin/users/premium?q=<%= encodeURIComponent(q) %>&role=<%= encodeURIComponent(role) %>&active_only=<%= activeOnly ? '1' : '0' %>&page=<%= page %>" />
+                        <button type="submit" class="btn danger">Revoke</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }); %>
+              <% if (!rows.length) { %>
+                <tr>
+                  <td colspan="9" class="muted">Tidak ada user untuk filter ini.</td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+
+      <div class="pager">
+        <% if (page > 1) { %>
+          <a class="btn ghost" href="/admin/users/premium?page=<%= page - 1 %>&q=<%= encodeURIComponent(q) %>&role=<%= encodeURIComponent(role) %>&active_only=<%= activeOnly ? '1' : '0' %>">Prev</a>
+        <% } %>
+        <% if (page < totalPages) { %>
+          <a class="btn ghost" href="/admin/users/premium?page=<%= page + 1 %>&q=<%= encodeURIComponent(q) %>&role=<%= encodeURIComponent(role) %>&active_only=<%= activeOnly ? '1' : '0' %>">Next</a>
+        <% } %>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

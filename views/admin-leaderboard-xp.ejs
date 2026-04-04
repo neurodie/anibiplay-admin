@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp" class="active">Leaderboard XP</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Leaderboard XP</h1>
+      <p class="muted">Period: <span class="mono"><%= periodLabel %></span></p>
+      <% if (windowStartText && windowEndText) { %>
+        <p class="muted mono">Window: <%= windowStartText %> - <%= windowEndText %></p>
+      <% } %>
+    </section>
+
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+
+    <form method="get" action="/admin/leaderboard-xp" class="card filters-advanced">
+      <div>
+        <label for="period">Period</label>
+        <select id="period" name="period">
+          <option value="daily" <%= period === 'daily' ? 'selected' : '' %>>daily</option>
+          <option value="weekly" <%= period === 'weekly' ? 'selected' : '' %>>weekly</option>
+          <option value="monthly" <%= period === 'monthly' ? 'selected' : '' %>>monthly</option>
+          <option value="all" <%= period === 'all' ? 'selected' : '' %>>all</option>
+        </select>
+      </div>
+      <div>
+        <label for="limit">Limit</label>
+        <select id="limit" name="limit">
+          <option value="20" <%= Number(limit) === 20 ? 'selected' : '' %>>20</option>
+          <option value="50" <%= Number(limit) === 50 ? 'selected' : '' %>>50</option>
+          <option value="100" <%= Number(limit) === 100 ? 'selected' : '' %>>100</option>
+        </select>
+      </div>
+      <div>
+        <label for="q">Search</label>
+        <input id="q" name="q" value="<%= q %>" placeholder="ID / name / email" />
+      </div>
+      <div class="filter-actions">
+        <button type="submit" class="btn">Apply</button>
+        <a class="btn ghost" href="/admin/leaderboard-xp">Reset</a>
+      </div>
+    </form>
+
+    <section class="card">
+      <div class="section-head">
+        <p class="muted mono">Total: <%= Number(total).toLocaleString('id-ID') %> | Page <%= page %>/<%= totalPages %></p>
+      </div>
+
+      <% if (tableMissing) { %>
+        <p class="muted">Table user untuk XP leaderboard belum lengkap. Dibutuhkan <span class="mono">users</span> dan <span class="mono">user_xp_ledger</span>.</p>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>User ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Level</th>
+                <th>XP Gained</th>
+                <th>Premium Expires</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% rows.forEach((x) => { %>
+                <tr>
+                  <td class="mono"><%= x.rank_no %></td>
+                  <td class="mono"><%= x.user_id %></td>
+                  <td><%= x.user_name || '-' %></td>
+                  <td><%= x.user_email || '-' %></td>
+                  <td><span class="chip"><%= x.user_role || '-' %></span></td>
+                  <td><%= Number(x.user_level || 1) %></td>
+                  <td><strong><%= Number(x.xp_gained || 0).toLocaleString('id-ID') %></strong></td>
+                  <td class="mono"><%= x.premium_expires_at_text || '-' %></td>
+                  <td>
+                    <a class="btn ghost" href="/admin/users/<%= x.user_id %>">Detail</a>
+                  </td>
+                </tr>
+              <% }); %>
+              <% if (!rows.length) { %>
+                <tr>
+                  <td colspan="9" class="muted">Belum ada data leaderboard untuk filter ini.</td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+
+      <div class="pager">
+        <% if (page > 1) { %>
+          <a class="btn ghost" href="/admin/leaderboard-xp?page=<%= page - 1 %>&period=<%= encodeURIComponent(period) %>&limit=<%= limit %>&q=<%= encodeURIComponent(q) %>">Prev</a>
+        <% } %>
+        <% if (page < totalPages) { %>
+          <a class="btn ghost" href="/admin/leaderboard-xp?page=<%= page + 1 %>&period=<%= encodeURIComponent(period) %>&limit=<%= limit %>&q=<%= encodeURIComponent(q) %>">Next</a>
+        <% } %>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

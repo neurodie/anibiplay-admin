@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>AnimeKita Panel</strong>
+        <span>Admin</span>
+      </div>
+      <nav>
+        <a href="/admin">Dashboard</a>
+        <a href="/admin/series">Series</a>
+        <a href="/admin/topanime">Top Anime</a>
+        <a href="/admin/schedule">Schedule</a>
+        <a href="/admin/updater">Updater</a>
+        <a href="/admin/announcement">Announcement</a>
+        <a href="/admin/notifications/send">Push Notif</a>
+        <a href="/admin/episode-error-reports">Error Reports</a>
+        <a href="/admin/list-banned">List Banned</a>
+        <a href="/admin/users" class="active">Users</a>
+        <a href="/admin/users/premium">Manage Premium</a>
+        <a href="/admin/leaderboard-xp">Leaderboard XP</a>
+      </nav>
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="container">
+    <p><a class="inline-link" href="/admin/users">&larr; Back to Users</a></p>
+
+    <section class="hero card">
+      <h1><%= user.name || ('User #' + user.id) %></h1>
+      <p class="muted mono">ID <%= user.id %> | role <%= user.role || '-' %> | level <%= Number(user.level || 1) %> | xp <%= Number(user.xp_total || 0).toLocaleString('id-ID') %></p>
+      <div class="inline-actions">
+        <a class="btn ghost" href="/admin/users/premium?q=<%= encodeURIComponent(String(user.id)) %>">Manage Premium</a>
+      </div>
+    </section>
+
+    <% if (error) { %>
+      <p class="alert"><%= error %></p>
+    <% } %>
+    <% if (success) { %>
+      <p class="alert ok"><%= success %></p>
+    <% } %>
+
+    <section class="card">
+      <h3>Level / XP Actions</h3>
+      <div class="inline-actions">
+        <form method="post" action="/admin/users/<%= user.id %>/reset-xp" onsubmit="return confirm('Reset level dan XP user ini?');">
+          <input type="hidden" name="return_to" value="/admin/users/<%= user.id %>" />
+          <button type="submit" class="btn danger">Reset Level & XP</button>
+        </form>
+      </div>
+      <form method="post" action="/admin/users/<%= user.id %>/set-level-xp" class="form-grid" style="margin-top:10px;">
+        <input type="hidden" name="return_to" value="/admin/users/<%= user.id %>" />
+        <div>
+          <label for="level">Level</label>
+          <input id="level" name="level" type="number" min="1" value="<%= Number(user.level || 1) %>" required />
+        </div>
+        <div>
+          <label for="xp_total">XP Total</label>
+          <input id="xp_total" name="xp_total" type="number" min="0" value="<%= Number(user.xp_total || 0) %>" required />
+        </div>
+        <div class="filter-actions">
+          <button type="submit" class="btn ghost">Save Level/XP</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card detail-grid">
+      <div><strong>ID:</strong> <span class="mono"><%= user.id %></span></div>
+      <div><strong>Firebase UID:</strong> <span class="mono"><%= user.firebase_uid || '-' %></span></div>
+      <div><strong>Email:</strong> <%= user.email || '-' %></div>
+      <div><strong>Role:</strong> <%= user.role || '-' %></div>
+      <div><strong>Active:</strong> <%= Number(user.is_active || 0) === 1 ? 'yes' : 'no' %></div>
+      <div><strong>Private:</strong> <%= Number(user.is_private || 0) === 1 ? 'yes' : 'no' %></div>
+      <div><strong>Premium Expires:</strong> <span class="mono"><%= user.premium_expires_at_text || '-' %></span></div>
+      <div><strong>Created:</strong> <span class="mono"><%= user.created_at_text || '-' %></span></div>
+      <div><strong>Last Seen:</strong> <span class="mono"><%= user.last_seen_at_text || '-' %></span></div>
+    </section>
+
+    <% if (user.avatar_url) { %>
+      <section class="card">
+        <h3>Avatar</h3>
+        <img src="<%= user.avatar_url %>" alt="avatar" class="cover" style="max-width:220px;" />
+      </section>
+    <% } %>
+
+    <section class="kpi-grid">
+      <article class="kpi-card">
+        <h3>Comments</h3>
+        <p><%= Number(stats.comments).toLocaleString('id-ID') %></p>
+      </article>
+      <article class="kpi-card">
+        <h3>History</h3>
+        <p><%= Number(stats.history).toLocaleString('id-ID') %></p>
+      </article>
+      <article class="kpi-card">
+        <h3>Favorites</h3>
+        <p><%= Number(stats.favorites).toLocaleString('id-ID') %></p>
+      </article>
+      <article class="kpi-card <%= Number(stats.activeBans) > 0 ? 'danger' : '' %>">
+        <h3>Active Bans</h3>
+        <p><%= Number(stats.activeBans).toLocaleString('id-ID') %></p>
+      </article>
+    </section>
+
+    <section class="card">
+      <h3>Recent Comments</h3>
+      <% if (!tableFlags.commentTableExists) { %>
+        <p class="muted">Table <span class="mono">episode_comments</span> tidak tersedia.</p>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Anime</th>
+                <th>Episode URL</th>
+                <th>Content</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% comments.forEach((x) => { %>
+                <tr>
+                  <td class="mono"><%= x.id %></td>
+                  <td><%= x.anime_title || '-' %></td>
+                  <td class="mono"><%= x.episode_url || '-' %></td>
+                  <td><%= x.content || '-' %></td>
+                  <td class="mono"><%= x.created_at_text || '-' %></td>
+                </tr>
+              <% }) %>
+              <% if (!comments.length) { %>
+                <tr><td colspan="5" class="muted">Belum ada comment.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+
+    <section class="card">
+      <h3>Recent Watch History</h3>
+      <% if (!tableFlags.historyTableExists) { %>
+        <p class="muted">Table <span class="mono">watch_progress</span> tidak tersedia.</p>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Anime</th>
+                <th>Episode</th>
+                <th>Progress</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% histories.forEach((x) => { %>
+                <tr>
+                  <td class="mono"><%= x.id %></td>
+                  <td><%= x.anime_title || '-' %></td>
+                  <td class="mono"><%= x.episode_label || x.episode_url || '-' %></td>
+                  <td><%= x.progress_percent == null ? '-' : (Number(x.progress_percent).toFixed(1) + '%') %></td>
+                  <td class="mono"><%= x.updated_at_text || '-' %></td>
+                </tr>
+              <% }) %>
+              <% if (!histories.length) { %>
+                <tr><td colspan="5" class="muted">Belum ada history.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+
+    <section class="card">
+      <h3>Recent Favorites</h3>
+      <% if (!tableFlags.favoriteTableExists) { %>
+        <p class="muted">Table <span class="mono">anime_favorites</span> tidak tersedia.</p>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Anime</th>
+                <th>Series URL</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% favorites.forEach((x) => { %>
+                <tr>
+                  <td class="mono"><%= x.id %></td>
+                  <td><%= x.anime_title || '-' %></td>
+                  <td class="mono"><%= x.series_url || '-' %></td>
+                  <td class="mono"><%= x.created_at_text || '-' %></td>
+                </tr>
+              <% }) %>
+              <% if (!favorites.length) { %>
+                <tr><td colspan="4" class="muted">Belum ada favorites.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+
+    <section class="card">
+      <h3>Ban History</h3>
+      <% if (!tableFlags.bannedTableExists) { %>
+        <p class="muted">Table <span class="mono">list_banned</span> tidak tersedia.</p>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Device ID</th>
+                <th>Reason</th>
+                <th>Banned By</th>
+                <th>Expires</th>
+                <th>Revoked</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% bans.forEach((x) => { %>
+                <tr>
+                  <td class="mono"><%= x.id %></td>
+                  <td class="mono"><%= x.device_id || '-' %></td>
+                  <td><%= x.reason || '-' %></td>
+                  <td><%= x.banned_by || '-' %></td>
+                  <td class="mono"><%= x.expires_at_text || '-' %></td>
+                  <td class="mono"><%= x.revoked_at_text || '-' %></td>
+                  <td><span class="chip"><%= x.status_kind %></span></td>
+                </tr>
+              <% }) %>
+              <% if (!bans.length) { %>
+                <tr><td colspan="7" class="muted">Belum ada riwayat ban.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>
