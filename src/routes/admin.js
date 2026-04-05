@@ -2476,6 +2476,41 @@ router.post('/users/:id(\\d+)/set-level-xp', async (req, res) => {
   }
 });
 
+router.post('/users/:id(\\d+)/delete-comments', async (req, res) => {
+  const userId = toInt(req.params.id, 0, 1, Number.MAX_SAFE_INTEGER);
+  const returnTo = sanitizeUsersReturnPath(req.body.return_to, userId);
+  if (!userId) return res.redirect(`${returnTo}?error=${encodeURIComponent('userId tidak valid')}`);
+
+  try {
+    const usersExists = await checkUserTableExists('users');
+    if (!usersExists) {
+      return res.redirect(`${returnTo}?error=${encodeURIComponent('Table users tidak ditemukan di user DB')}`);
+    }
+    const commentTableExists = await checkUserTableExists('episode_comments');
+    if (!commentTableExists) {
+      return res.redirect(`${returnTo}?error=${encodeURIComponent('Table episode_comments tidak ditemukan di user DB')}`);
+    }
+
+    const [[user]] = await userPool.query(
+      'SELECT id FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!user) {
+      return res.redirect(`${returnTo}?error=${encodeURIComponent(`User #${userId} tidak ditemukan`)}`);
+    }
+
+    const [result] = await userPool.query(
+      'DELETE FROM episode_comments WHERE user_id = ?',
+      [userId]
+    );
+    const deletedCount = Number(result && result.affectedRows ? result.affectedRows : 0);
+
+    return res.redirect(`${returnTo}?success=${encodeURIComponent(`User #${userId} comment dihapus (${deletedCount})`)}`);
+  } catch (err) {
+    return res.redirect(`${returnTo}?error=${encodeURIComponent(err.message || 'Gagal hapus comment user')}`);
+  }
+});
+
 router.get('/users/:id(\\d+)', async (req, res) => {
   const userId = toInt(req.params.id, 0, 1, Number.MAX_SAFE_INTEGER);
   const flashError = String(req.query.error || '').trim();
@@ -2808,6 +2843,7 @@ router.get('/list-banned', async (req, res) => {
   const status = String(req.query.status || '').trim().toLowerCase();
   const flashError = String(req.query.error || '').trim();
   const flashRevoked = String(req.query.revoked || '').trim() === '1';
+  const flashAdded = String(req.query.added || '').trim() === '1';
 
   try {
     const exists = await checkUserTableExists('list_banned');
@@ -2823,6 +2859,7 @@ router.get('/list-banned', async (req, res) => {
         tableMissing: true,
         error: flashError,
         revoked: flashRevoked,
+        added: flashAdded,
         nowEpochMs: Date.now()
       });
     }
@@ -2897,6 +2934,7 @@ router.get('/list-banned', async (req, res) => {
       tableMissing: false,
       error: flashError,
       revoked: flashRevoked,
+      added: flashAdded,
       nowEpochMs: Date.now()
     });
   } catch (err) {
@@ -2911,8 +2949,84 @@ router.get('/list-banned', async (req, res) => {
       tableMissing: false,
       error: err && err.message ? err.message : 'Gagal load list_banned',
       revoked: flashRevoked,
+      added: flashAdded,
       nowEpochMs: Date.now()
     });
+  }
+});
+
+router.post('/list-banned/add', async (req, res) => {
+  const userId = toInt(req.body.user_id, 0, 1, Number.MAX_SAFE_INTEGER);
+  const deviceId = String(req.body.device_id || '').trim();
+  const reason = String(req.body.reason || '').trim();
+  const bannedByInput = String(req.body.banned_by || '').trim();
+  const expiresAtInput = String(req.body.expires_at || '').trim();
+  const page = toInt(req.body.page, 1, 1, 100000);
+  const q = String(req.body.q || '').trim();
+  const status = String(req.body.status || '').trim().toLowerCase();
+
+  if (!userId) {
+    return res.redirect(
+      `/admin/list-banned?error=${encodeURIComponent('user_id wajib angka > 0')}&page=${page}&q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`
+    );
+  }
+  if (!reason) {
+    return res.redirect(
+      `/admin/list-banned?error=${encodeURIComponent('reason wajib diisi')}&page=${page}&q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`
+    );
+  }
+
+  let expiresAt = null;
+  if (expiresAtInput) {
+    const parsed = new Date(expiresAtInput);
+    if (Number.isNaN(parsed.getTime())) {
+      return res.redirect(
+        `/admin/list-banned?error=${encodeURIComponent('expires_at tidak valid')}&page=${page}&q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`
+      );
+    }
+    expiresAt = parsed;
+  }
+
+  try {
+    const exists = await checkUserTableExists('list_banned');
+    if (!exists) {
+      return res.redirect('/admin/list-banned?error=Table%20list_banned%20tidak%20ditemukan');
+    }
+
+    const [[activeDup]] = await userPool.query(
+      `SELECT id
+       FROM list_banned
+       WHERE user_id = ?
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())
+         AND (
+           (? = '' AND (device_id IS NULL OR device_id = ''))
+           OR device_id = ?
+         )
+       LIMIT 1`,
+      [userId, deviceId, deviceId]
+    );
+    if (activeDup) {
+      return res.redirect(
+        `/admin/list-banned?error=${encodeURIComponent(`Ban aktif sudah ada (id=${activeDup.id}) untuk user/device ini`)}&page=${page}&q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`
+      );
+    }
+
+    const bannedBy = bannedByInput || String(req.session.adminUser || 'admin').slice(0, 100);
+    await userPool.query(
+      `INSERT INTO list_banned (
+         user_id, device_id, reason, banned_by, expires_at, revoked_at, created_at, updated_at
+       ) VALUES (?, NULLIF(?, ''), ?, NULLIF(?, ''), ?, NULL, NOW(), NOW())`,
+      [userId, deviceId, reason, bannedBy, expiresAt]
+    );
+
+    return res.redirect(
+      `/admin/list-banned?added=1&page=${page}&q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`
+    );
+  } catch (err) {
+    return res.redirect(
+      `/admin/list-banned?error=${encodeURIComponent(err && err.message ? err.message : 'Gagal tambah ban')}&page=${page}&q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`
+    );
   }
 });
 

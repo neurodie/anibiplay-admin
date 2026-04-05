@@ -138,6 +138,10 @@
                   <td>
                     <div class="action-row">
                       <a class="btn ghost" href="/admin/users/<%= u.id %>">Detail</a>
+                      <form method="post" action="/admin/users/<%= u.id %>/delete-comments" onsubmit="return confirm('Hapus semua comment user ini?');">
+                        <input type="hidden" name="return_to" value="/admin/users?page=<%= page %>&q=<%= encodeURIComponent(q) %>&role=<%= encodeURIComponent(role) %>&premium=<%= encodeURIComponent(premium) %>&active=<%= encodeURIComponent(active) %>" />
+                        <button type="submit" class="btn ghost">Del Comments</button>
+                      </form>
                       <form method="post" action="/admin/users/<%= u.id %>/reset-xp" onsubmit="return confirm('Reset level dan XP user ini?');">
                         <input type="hidden" name="return_to" value="/admin/users?page=<%= page %>&q=<%= encodeURIComponent(q) %>&role=<%= encodeURIComponent(role) %>&premium=<%= encodeURIComponent(premium) %>&active=<%= encodeURIComponent(active) %>" />
                         <button type="submit" class="btn danger">Reset XP</button>

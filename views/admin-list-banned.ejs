@@ -45,6 +45,9 @@
     <% if (revoked) { %>
       <p class="alert ok">Ban berhasil di-revoke.</p>
     <% } %>
+    <% if (added) { %>
+      <p class="alert ok">Ban baru berhasil ditambahkan.</p>
+    <% } %>
     <% if (error) { %>
       <p class="alert"><%= error %></p>
     <% } %>
@@ -54,6 +57,38 @@
         <p class="muted">Table <span class="mono">list_banned</span> tidak ditemukan di user DB.</p>
       </section>
     <% } else { %>
+      <form method="post" action="/admin/list-banned/add" class="card form-grid">
+        <h3>Add Banned User</h3>
+        <input type="hidden" name="page" value="<%= page %>" />
+        <input type="hidden" name="q" value="<%= q %>" />
+        <input type="hidden" name="status" value="<%= status %>" />
+
+        <div>
+          <label for="user_id">User ID *</label>
+          <input id="user_id" name="user_id" type="number" min="1" required />
+        </div>
+        <div>
+          <label for="device_id">Device ID</label>
+          <input id="device_id" name="device_id" placeholder="andr-aacb75b32b9eeb51" />
+        </div>
+        <div class="full">
+          <label for="reason">Reason *</label>
+          <textarea id="reason" name="reason" rows="2" required placeholder="Terlalu banyak request ke aplikasi"></textarea>
+        </div>
+        <div>
+          <label for="banned_by">Banned By</label>
+          <input id="banned_by" name="banned_by" placeholder="kosong = admin login saat ini" />
+        </div>
+        <div>
+          <label for="expires_at">Expires At</label>
+          <input id="expires_at" name="expires_at" type="datetime-local" />
+          <p class="muted">Kosongkan untuk ban permanen.</p>
+        </div>
+        <div class="full inline-actions">
+          <button type="submit" class="btn">Add Ban</button>
+        </div>
+      </form>
+
       <form method="get" action="/admin/list-banned" class="card filters-advanced">
         <div>
           <label for="q">Search</label>
