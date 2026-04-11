@@ -489,15 +489,6 @@ function buildXpLeaderboardWindow(periodInput) {
   const period = String(periodInput || 'weekly').trim().toLowerCase();
   const now = new Date();
 
-  if (period === 'all') {
-    return {
-      period: 'all',
-      windowStart: null,
-      windowEnd: null,
-      label: 'All Time'
-    };
-  }
-
   if (period === 'daily') {
     const windowStart = startOfUtcDay(now);
     const windowEnd = new Date(windowStart);
@@ -516,6 +507,63 @@ function buildXpLeaderboardWindow(periodInput) {
   const windowEnd = new Date(windowStart);
   windowEnd.setUTCDate(windowEnd.getUTCDate() + 7);
   return { period: 'weekly', windowStart, windowEnd, label: 'Weekly (UTC, Monday start)' };
+}
+
+function toUtcDateOnlyString(input) {
+  if (!input) return '';
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+async function queryXpDailyLeaderboard({ whereSql, whereParams, limit, offset, windowStart, windowEnd }) {
+  const dateStart = toUtcDateOnlyString(windowStart);
+  const dateEnd = toUtcDateOnlyString(windowEnd);
+  const [rowsRaw] = await userPool.query(
+    `SELECT
+       u.id AS user_id,
+       u.name AS user_name,
+       u.email AS user_email,
+       u.level AS user_level,
+       u.role AS user_role,
+       u.premium_expires_at AS user_premium_expires_at,
+       COALESCE(SUM(d.xp_watch), 0) AS xp_gained
+     FROM users u
+     LEFT JOIN user_xp_daily d
+       ON d.user_id = u.id
+      AND d.date_utc >= ?
+      AND d.date_utc < ?
+     ${whereSql}
+     GROUP BY u.id, u.name, u.email, u.level, u.role, u.premium_expires_at
+     HAVING xp_gained > 0
+     ORDER BY xp_gained DESC, u.id ASC
+     LIMIT ? OFFSET ?`,
+    [dateStart, dateEnd, ...whereParams, limit, offset]
+  );
+
+  const [[countRow]] = await userPool.query(
+    `SELECT COUNT(*) AS total
+     FROM (
+       SELECT u.id
+       FROM users u
+       LEFT JOIN user_xp_daily d
+         ON d.user_id = u.id
+        AND d.date_utc >= ?
+        AND d.date_utc < ?
+       ${whereSql}
+       GROUP BY u.id
+       HAVING COALESCE(SUM(d.xp_watch), 0) > 0
+     ) counted`,
+    [dateStart, dateEnd, ...whereParams]
+  );
+
+  return {
+    rowsRaw,
+    total: Number((countRow && countRow.total) || 0)
+  };
 }
 
 function sanitizePremiumReturnPath(input) {
@@ -2143,8 +2191,8 @@ router.get('/leaderboard-xp', async (req, res) => {
 
   try {
     const userTableExists = await checkUserTableExists('users');
-    const xpLedgerExists = await checkUserTableExists('user_xp_ledger');
-    if (!userTableExists || !xpLedgerExists) {
+    const xpDailyExists = await checkUserTableExists('user_xp_daily');
+    if (!userTableExists || !xpDailyExists) {
       return res.render('admin-leaderboard-xp', {
         title: 'Leaderboard XP',
         rows: [],
@@ -2158,13 +2206,9 @@ router.get('/leaderboard-xp', async (req, res) => {
         windowStartText: '',
         windowEndText: '',
         tableMissing: true,
-        error: (!userTableExists ? 'users ' : '') + (!xpLedgerExists ? 'user_xp_ledger' : '')
+        error: (!userTableExists ? 'users ' : '') + (!xpDailyExists ? 'user_xp_daily' : '')
       });
     }
-
-    const joinDateSql = window.period === 'all'
-      ? ''
-      : 'AND l.created_at >= ? AND l.created_at < ?';
 
     const where = ['u.is_private = 0'];
     const whereParams = [];
@@ -2175,52 +2219,14 @@ router.get('/leaderboard-xp', async (req, res) => {
     }
     const whereSql = `WHERE ${where.join(' AND ')}`;
 
-    const leaderboardParams = [];
-    if (window.period !== 'all') leaderboardParams.push(window.windowStart, window.windowEnd);
-    leaderboardParams.push(...whereParams);
-    leaderboardParams.push(limit, offset);
-
-    const [rowsRaw] = await userPool.query(
-      `SELECT
-         u.id AS user_id,
-         u.name AS user_name,
-         u.email AS user_email,
-         u.level AS user_level,
-         u.role AS user_role,
-         u.premium_expires_at AS user_premium_expires_at,
-         COALESCE(SUM(l.xp_delta), 0) AS xp_gained
-       FROM users u
-       LEFT JOIN user_xp_ledger l
-         ON l.user_id = u.id
-         ${joinDateSql}
-       ${whereSql}
-       GROUP BY u.id, u.name, u.email, u.level, u.role, u.premium_expires_at
-       HAVING xp_gained > 0
-       ORDER BY xp_gained DESC, u.id ASC
-       LIMIT ? OFFSET ?`,
-      leaderboardParams
-    );
-
-    const totalParams = [];
-    if (window.period !== 'all') totalParams.push(window.windowStart, window.windowEnd);
-    totalParams.push(...whereParams);
-
-    const [[countRow]] = await userPool.query(
-      `SELECT COUNT(*) AS total
-       FROM (
-         SELECT u.id
-         FROM users u
-         LEFT JOIN user_xp_ledger l
-           ON l.user_id = u.id
-           ${joinDateSql}
-         ${whereSql}
-         GROUP BY u.id
-         HAVING COALESCE(SUM(l.xp_delta), 0) > 0
-       ) counted`,
-      totalParams
-    );
-
-    const total = Number(countRow && countRow.total ? countRow.total : 0);
+    const { rowsRaw, total } = await queryXpDailyLeaderboard({
+      whereSql,
+      whereParams,
+      limit,
+      offset,
+      windowStart: window.windowStart,
+      windowEnd: window.windowEnd
+    });
     const totalPages = Math.max(1, Math.ceil(total / limit));
     const rows = rowsRaw.map((r, idx) => ({
       ...r,
@@ -2389,6 +2395,7 @@ router.post('/users/:id(\\d+)/reset-xp', async (req, res) => {
     }
     const xpLedgerExists = await checkUserTableExists('user_xp_ledger');
     const xpStateExists = await checkUserTableExists('user_watch_xp_state');
+    const xpDailyExists = await checkUserTableExists('user_xp_daily');
     const watchProgressExists = await checkUserTableExists('watch_progress');
 
     conn = await userPool.getConnection();
@@ -2408,6 +2415,9 @@ router.post('/users/:id(\\d+)/reset-xp', async (req, res) => {
     }
     if (xpStateExists) {
       await conn.query('DELETE FROM user_watch_xp_state WHERE user_id = ?', [userId]);
+    }
+    if (xpDailyExists) {
+      await conn.query('DELETE FROM user_xp_daily WHERE user_id = ?', [userId]);
     }
     if (watchProgressExists) {
       await conn.query('DELETE FROM watch_progress WHERE user_id = ?', [userId]);
@@ -2976,6 +2986,13 @@ router.post('/list-banned/add', async (req, res) => {
     );
   }
 
+  const bannedBy = bannedByInput ? toInt(bannedByInput, 0, 1, Number.MAX_SAFE_INTEGER) : 0;
+  if (bannedByInput && !bannedBy) {
+    return res.redirect(
+      `/admin/list-banned?error=${encodeURIComponent('banned_by harus user ID angka atau kosong')}&page=${page}&q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`
+    );
+  }
+
   let expiresAt = null;
   if (expiresAtInput) {
     const parsed = new Date(expiresAtInput);
@@ -3012,12 +3029,11 @@ router.post('/list-banned/add', async (req, res) => {
       );
     }
 
-    const bannedBy = bannedByInput || String(req.session.adminUser || 'admin').slice(0, 100);
     await userPool.query(
       `INSERT INTO list_banned (
          user_id, device_id, reason, banned_by, expires_at, revoked_at, created_at, updated_at
-       ) VALUES (?, NULLIF(?, ''), ?, NULLIF(?, ''), ?, NULL, NOW(), NOW())`,
-      [userId, deviceId, reason, bannedBy, expiresAt]
+       ) VALUES (?, NULLIF(?, ''), ?, ?, ?, NULL, NOW(), NOW())`,
+      [userId, deviceId, reason, bannedBy || null, expiresAt]
     );
 
     return res.redirect(
@@ -3027,6 +3043,94 @@ router.post('/list-banned/add', async (req, res) => {
     return res.redirect(
       `/admin/list-banned?error=${encodeURIComponent(err && err.message ? err.message : 'Gagal tambah ban')}&page=${page}&q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`
     );
+  }
+});
+
+router.get('/list-banned/device-suggest', async (req, res) => {
+  const userId = toInt(req.query.user_id, 0, 1, Number.MAX_SAFE_INTEGER);
+  if (!userId) {
+    return res.status(400).json({ ok: false, error: 'user_id wajib angka > 0' });
+  }
+
+  try {
+    const exists = await checkUserTableExists('list_banned');
+    if (!exists) {
+      return res.status(404).json({ ok: false, error: 'Table list_banned tidak ditemukan' });
+    }
+
+    const suggestions = [];
+    const seen = new Set();
+    const pushSuggestion = (raw) => {
+      const v = String(raw || '').trim();
+      if (!v) return;
+      if (seen.has(v)) return;
+      seen.add(v);
+      suggestions.push(v);
+    };
+
+    // Primary source: user_push_tokens (latest active device first).
+    let source = 'none';
+    try {
+      const [rows] = await userPool.query(
+        `SELECT device_id
+         FROM user_push_tokens
+         WHERE user_id = ?
+           AND device_id IS NOT NULL
+           AND device_id <> ''
+         ORDER BY is_active DESC, last_seen_at DESC, updated_at DESC, id DESC
+         LIMIT 10`,
+        [userId]
+      );
+      for (const row of rows) pushSuggestion(row && row.device_id);
+      if (suggestions.length) source = 'user_push_tokens';
+    } catch (err) {
+      if (!err || err.code !== 'ER_NO_SUCH_TABLE') throw err;
+    }
+
+    // Secondary source: previous bans.
+    const [rowsBanned] = await userPool.query(
+      `SELECT device_id
+       FROM list_banned
+       WHERE user_id = ?
+         AND device_id IS NOT NULL
+         AND device_id <> ''
+       ORDER BY id DESC
+       LIMIT 10`,
+      [userId]
+    );
+    for (const row of rowsBanned) pushSuggestion(row && row.device_id);
+    if (source === 'none' && suggestions.length) source = 'list_banned';
+
+    // Last fallback: users.device_info (if available).
+    try {
+      const [[u]] = await userPool.query(
+        'SELECT device_info FROM users WHERE id = ? LIMIT 1',
+        [userId]
+      );
+      const deviceInfoRaw = u && u.device_info ? String(u.device_info) : '';
+      if (deviceInfoRaw) {
+        try {
+          const obj = JSON.parse(deviceInfoRaw);
+          pushSuggestion(obj && (obj.deviceId || obj.device_id || obj.androidId || obj.android_id));
+        } catch (_err) {
+          // If non-JSON string, use as-is.
+          pushSuggestion(deviceInfoRaw);
+        }
+      }
+      if (source === 'none' && suggestions.length) source = 'users.device_info';
+    } catch (err) {
+      if (!err || err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+    }
+
+    return res.json({
+      ok: true,
+      user_id: userId,
+      device_id: suggestions[0] || '',
+      source,
+      suggestions
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : 'Gagal cari device_id' });
   }
 });
 

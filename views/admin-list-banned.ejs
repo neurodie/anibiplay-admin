@@ -65,11 +65,15 @@
 
         <div>
           <label for="user_id">User ID *</label>
-          <input id="user_id" name="user_id" type="number" min="1" required />
+          <div class="inline-actions">
+            <input id="user_id" name="user_id" type="number" min="1" required />
+            <button id="btn_find_device" type="button" class="btn ghost">Find Device</button>
+          </div>
         </div>
         <div>
           <label for="device_id">Device ID</label>
           <input id="device_id" name="device_id" placeholder="andr-aacb75b32b9eeb51" />
+          <p id="device_hint" class="muted"></p>
         </div>
         <div class="full">
           <label for="reason">Reason *</label>
@@ -77,7 +81,7 @@
         </div>
         <div>
           <label for="banned_by">Banned By</label>
-          <input id="banned_by" name="banned_by" placeholder="kosong = admin login saat ini" />
+          <input id="banned_by" name="banned_by" type="number" min="1" placeholder="opsional: user_id admin" />
         </div>
         <div>
           <label for="expires_at">Expires At</label>
@@ -173,5 +177,54 @@
       </section>
     <% } %>
   </main>
+  <script>
+    (function () {
+      var userIdEl = document.getElementById('user_id');
+      var deviceIdEl = document.getElementById('device_id');
+      var findBtn = document.getElementById('btn_find_device');
+      var hintEl = document.getElementById('device_hint');
+      if (!userIdEl || !deviceIdEl || !findBtn || !hintEl) return;
+
+      async function findDeviceByUserId() {
+        var userId = String(userIdEl.value || '').trim();
+        if (!userId) {
+          hintEl.textContent = 'Isi user_id dulu.';
+          return;
+        }
+        hintEl.textContent = 'Mencari device_id...';
+        findBtn.disabled = true;
+        try {
+          var resp = await fetch('/admin/list-banned/device-suggest?user_id=' + encodeURIComponent(userId), {
+            credentials: 'same-origin'
+          });
+          var json = await resp.json();
+          if (!resp.ok || !json || !json.ok) {
+            hintEl.textContent = (json && json.error) ? String(json.error) : 'Device tidak ditemukan';
+            return;
+          }
+          if (json.device_id) {
+            deviceIdEl.value = String(json.device_id);
+            var src = json.source ? (' [source: ' + json.source + ']') : '';
+            if (Array.isArray(json.suggestions) && json.suggestions.length > 1) {
+              hintEl.textContent = 'Device terisi otomatis' + src + '. Alternatif: ' + json.suggestions.slice(1, 3).join(', ');
+            } else {
+              hintEl.textContent = 'Device terisi otomatis' + src + '.';
+            }
+          } else {
+            hintEl.textContent = 'Belum ada device_id tersimpan untuk user ini.';
+          }
+        } catch (err) {
+          hintEl.textContent = err && err.message ? err.message : 'Gagal mencari device_id';
+        } finally {
+          findBtn.disabled = false;
+        }
+      }
+
+      findBtn.addEventListener('click', findDeviceByUserId);
+      userIdEl.addEventListener('blur', function () {
+        if (!String(deviceIdEl.value || '').trim()) findDeviceByUserId();
+      });
+    })();
+  </script>
 </body>
 </html>

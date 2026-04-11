@@ -56,7 +56,6 @@
           <option value="daily" <%= period === 'daily' ? 'selected' : '' %>>daily</option>
           <option value="weekly" <%= period === 'weekly' ? 'selected' : '' %>>weekly</option>
           <option value="monthly" <%= period === 'monthly' ? 'selected' : '' %>>monthly</option>
-          <option value="all" <%= period === 'all' ? 'selected' : '' %>>all</option>
         </select>
       </div>
       <div>
@@ -83,7 +82,7 @@
       </div>
 
       <% if (tableMissing) { %>
-        <p class="muted">Table user untuk XP leaderboard belum lengkap. Dibutuhkan <span class="mono">users</span> dan <span class="mono">user_xp_ledger</span>.</p>
+        <p class="muted">Table user untuk XP leaderboard belum lengkap. Dibutuhkan <span class="mono">users</span> dan <span class="mono">user_xp_daily</span>.</p>
       <% } else { %>
         <div class="table-wrap">
           <table>
@@ -95,7 +94,7 @@
                 <th>Email</th>
                 <th>Role</th>
                 <th>Level</th>
-                <th>XP Gained</th>
+                <th>XP Gained (Watch)</th>
                 <th>Premium Expires</th>
                 <th>Action</th>
               </tr>
