@@ -45,7 +45,102 @@
     <% if (created) { %><p class="alert ok">Jadwal berhasil ditambahkan.</p><% } %>
     <% if (deleted) { %><p class="alert ok">Jadwal berhasil dihapus.</p><% } %>
     <% if (deletedAll) { %><p class="alert ok">Semua daftar jadwal berhasil dihapus.</p><% } %>
+    <% if (syncDone) { %>
+      <p class="alert ok">
+        Auto-sync Otakudesu selesai.
+        Page: <%= syncStats.pageStart %>-<%= syncStats.pageEnd %> |
+        Scraped: <%= syncStats.scraped %> |
+        Matched: <%= syncStats.matched %> |
+        Inserted: <%= syncStats.inserted %> |
+        Updated: <%= syncStats.updated %> |
+        Skipped: <%= syncStats.skipped %>
+      </p>
+    <% } %>
+    <% if (previewReady) { %><p class="alert ok">Preview sync sudah dibuat. Cek data di bawah lalu klik Apply jika setuju.</p><% } %>
+    <% if (syncError) { %><p class="alert"><%= syncError %></p><% } %>
     <% if (error) { %><p class="alert"><%= error %></p><% } %>
+
+    <% if (syncPreview) { %>
+      <section class="card">
+        <div class="section-head">
+          <h3>Preview Auto Sync Otakudesu</h3>
+          <div class="inline-actions">
+            <form method="post" action="/admin/schedule/auto-sync-otakudesu/apply" onsubmit="return confirm('Apply sync jadwal dari preview ini?')">
+              <button type="submit" class="btn">Apply Sync</button>
+            </form>
+            <a class="btn ghost" href="/admin/schedule?clear_preview=1">Discard Preview</a>
+          </div>
+        </div>
+        <p class="muted">
+          Page <%= syncPreview.pageFrom %>-<%= syncPreview.pageTo %> |
+          Scraped: <%= syncPreview.scrapedCount %> |
+          Matched: <%= syncPreview.matchedCount %> |
+          Unmatched: <%= syncPreview.unmatchedCount %> |
+          Insert: <%= (syncPreview.actionCounts && syncPreview.actionCounts.insert) || 0 %> |
+          Update: <%= (syncPreview.actionCounts && syncPreview.actionCounts.update) || 0 %> |
+          Skip: <%= (syncPreview.actionCounts && syncPreview.actionCounts.skip) || 0 %>
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Hari Baru</th>
+                <th>Hari Saat Ini</th>
+                <th>Series</th>
+                <th>Slug Otakudesu</th>
+                <th>Page</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% (syncPreview.previewRows || []).forEach((r) => { %>
+                <tr>
+                  <td class="mono"><%= r.action %></td>
+                  <td><%= r.day_of_week %></td>
+                  <td><%= (r.current_days || []).length ? r.current_days.join(', ') : '-' %></td>
+                  <td>
+                    <a href="/admin/series/<%= r.series_id %>"><%= r.title || '-' %></a>
+                    <span class="muted mono">(#<%= r.series_id %> / <%= r.series_slug_snapshot %>)</span>
+                  </td>
+                  <td class="mono"><%= r.source_slug %></td>
+                  <td><%= r.source_page %></td>
+                </tr>
+              <% }); %>
+              <% if (!(syncPreview.previewRows || []).length) { %>
+                <tr><td colspan="6" class="muted">Tidak ada data match untuk di-sync.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+
+        <% if ((syncPreview.unmatchedRows || []).length) { %>
+          <details style="margin-top:12px;">
+            <summary class="mono">Show Unmatched Slug (<%= syncPreview.unmatchedRows.length %>)</summary>
+            <div class="table-wrap" style="margin-top:8px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Slug Otakudesu</th>
+                    <th>Hari</th>
+                    <th>Page</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% syncPreview.unmatchedRows.forEach((u) => { %>
+                    <tr>
+                      <td class="mono"><%= u.slug %></td>
+                      <td><%= u.day %></td>
+                      <td><%= u.page %></td>
+                    </tr>
+                  <% }); %>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        <% } %>
+      </section>
+    <% } %>
 
     <form method="post" action="/admin/schedule/create" class="card form-grid">
       <div class="full search-box">
@@ -108,6 +203,11 @@
       <div class="section-head">
         <h3>Daftar Jadwal</h3>
         <div class="inline-actions">
+          <form method="post" action="/admin/schedule/auto-sync-otakudesu" class="inline-actions">
+            <input type="number" name="page_start" min="1" max="30" value="1" style="width:90px" />
+            <input type="number" name="page_end" min="1" max="30" value="5" style="width:90px" />
+            <button type="submit" class="btn">Preview Sync Otakudesu</button>
+          </form>
           <form method="get" action="/admin/schedule" class="inline-actions">
             <select name="day">
               <option value="">Semua Hari</option>

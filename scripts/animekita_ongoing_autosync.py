@@ -103,6 +103,16 @@ def parse_genres(raw: object) -> List[str]:
     return out
 
 
+def to_nonneg_int(value: object, fallback: int = 0) -> int:
+    try:
+        n = int(float(value))
+        if n < 0:
+            return fallback
+        return n
+    except Exception:
+        return fallback
+
+
 def fetch_json(url: str, timeout_sec: int = 25, max_attempts: int = 4) -> dict:
     last_err: Optional[Exception] = None
     for i in range(1, max_attempts + 1):
@@ -203,10 +213,10 @@ def map_series_payload(remote: dict, slug: str) -> SeriesPayload:
 
 
 def get_mysql_conn():
-    host = os.getenv("DB_HOST", "127.0.0.1")
+    host = os.getenv("DB_HOST", "103.16.116.244")
     port = int(os.getenv("DB_PORT", "3306"))
-    user = os.getenv("DB_USER", "root")
-    password = os.getenv("DB_PASS", "")
+    user = os.getenv("DB_USER", "hxcuser_remote")
+    password = os.getenv("DB_PASS", "@Hudaxcode21")
     database = os.getenv("DB_NAME", "anime")
     return pymysql.connect(
         host=host,
@@ -398,7 +408,6 @@ def sync_single_slug(
             chapter_slug = clean_slug(ch.get("url"))
             if not chapter_slug:
                 continue
-
             episode_id = by_source.get(source_episode_id) or by_slug.get(chapter_slug)
             if episode_id:
                 if dry_run:
@@ -471,12 +480,6 @@ def sync_single_slug(
                     with_streams.add(episode_id)
             except Exception as exc:
                 report["errors"].append(f"chapter {chapter_slug}: {exc}")
-
-        if not dry_run and report["episodes_inserted"] > 0:
-            cur.execute(
-                "UPDATE series SET updated_at = CURRENT_TIMESTAMP WHERE id = %s LIMIT 1",
-                (series_id,),
-            )
 
     return report
 

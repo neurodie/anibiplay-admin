@@ -613,6 +613,285 @@ function normalizeScheduleDay(input) {
   return SCHEDULE_DAYS.includes(day) ? day : '';
 }
 
+function normalizeOtakudesuDay(input) {
+  const raw = String(input || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (raw.includes('random') || raw === 'none') return 'minggu';
+  if (raw.includes('senin')) return 'senin';
+  if (raw.includes('selasa')) return 'selasa';
+  if (raw.includes('rabu')) return 'rabu';
+  if (raw.includes('kamis')) return 'kamis';
+  if (raw.includes('jumat') || raw.includes("jum'at")) return 'jumat';
+  if (raw.includes('sabtu')) return 'sabtu';
+  if (raw.includes('minggu')) return 'minggu';
+  return '';
+}
+
+function extractOtakudesuAnimeSlug(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  try {
+    const u = new URL(raw);
+    const parts = u.pathname.split('/').map((x) => cleanSeriesSlug(x)).filter(Boolean);
+    const animeIdx = parts.findIndex((x) => x === 'anime');
+    if (animeIdx >= 0 && parts[animeIdx + 1]) return parts[animeIdx + 1];
+    return parts.length ? parts[parts.length - 1] : '';
+  } catch (_err) {
+    return '';
+  }
+}
+
+function toComparableAnimeSlug(input) {
+  let slug = cleanSeriesSlug(input).toLowerCase();
+  if (!slug) return '';
+  slug = slug
+    .replace(/-subtitle-indonesia$/i, '')
+    .replace(/-sub-indo$/i, '')
+    .replace(/-subindo$/i, '')
+    .replace(/-indo-sub$/i, '');
+  return cleanSeriesSlug(slug);
+}
+
+async function scrapeOtakudesuOngoingPages(pageStart = 1, pageEnd = 5) {
+  const minPage = Math.max(1, Number(pageStart) || 1);
+  const maxPage = Math.max(minPage, Math.min(30, Number(pageEnd) || 5));
+  const out = [];
+  const seen = new Set();
+
+  for (let p = minPage; p <= maxPage; p += 1) {
+    const url = `https://otakudesu.blog/ongoing-anime/page/${p}/`;
+    const resp = await axios.get(url, {
+      timeout: 25000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml'
+      }
+    });
+    const html = String(resp.data || '');
+    const itemRegex = /<li>\s*<div class=['"]detpost['"]>([\s\S]*?)<\/div>\s*<\/li>/gi;
+    let m;
+    while ((m = itemRegex.exec(html)) !== null) {
+      const block = String(m[1] || '');
+      const hrefMatch = block.match(/<a[^>]+href=['"]([^'"]+\/anime\/[^'"]+)['"]/i);
+      const dayMatch = block.match(/<div class=['"]epztipe['"][^>]*>[\s\S]*?<\/i>\s*([^<]+)\s*<\/div>/i);
+      const href = hrefMatch ? String(hrefMatch[1]) : '';
+      const slug = extractOtakudesuAnimeSlug(href);
+      const day = normalizeOtakudesuDay(dayMatch ? dayMatch[1] : '');
+      if (!slug || !day) continue;
+      const key = `${slug}|${day}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ slug, day, page: p, href });
+    }
+  }
+  return out;
+}
+
+function buildExistingScheduleMap(existingRows) {
+  const existingBySeries = new Map();
+  for (const row of existingRows || []) {
+    const key = Number(row.series_id);
+    if (!existingBySeries.has(key)) existingBySeries.set(key, []);
+    existingBySeries.get(key).push(row);
+  }
+  return existingBySeries;
+}
+
+function planScheduleAction(existingBySeries, seriesId, targetDay) {
+  const rows = existingBySeries.get(Number(seriesId)) || [];
+  const sameDay = rows.find((x) => String(x.day_of_week) === String(targetDay));
+  if (sameDay) return { action: 'skip', currentDays: rows.map((x) => String(x.day_of_week)), keepId: Number(sameDay.id) };
+  if (rows.length > 0) return { action: 'update', currentDays: rows.map((x) => String(x.day_of_week)), keepId: Number(rows[0].id) };
+  return { action: 'insert', currentDays: [], keepId: 0 };
+}
+
+async function buildOtakudesuSchedulePreview(pageFrom, pageTo) {
+  const scrapedRows = await scrapeOtakudesuOngoingPages(pageFrom, pageTo);
+
+  const byComparable = new Map();
+  for (const row of scrapedRows) {
+    const key = toComparableAnimeSlug(row.slug);
+    if (!key || byComparable.has(key)) continue;
+    byComparable.set(key, row);
+  }
+  const lookupSlugs = Array.from(byComparable.keys());
+  if (!lookupSlugs.length) {
+    return {
+      pageFrom,
+      pageTo,
+      generatedAt: Date.now(),
+      scrapedCount: scrapedRows.length,
+      matchedCount: 0,
+      unmatchedCount: 0,
+      actionCounts: { insert: 0, update: 0, skip: 0 },
+      previewRows: [],
+      applyRows: []
+    };
+  }
+
+  const [seriesRows] = await pool.query(
+    `SELECT id, title, series_slug, cover_url
+     FROM series
+     WHERE source_platform = 'animekita'
+       AND series_slug IS NOT NULL
+       AND series_slug <> ''`
+  );
+
+  const seriesByComparable = new Map();
+  for (const s of seriesRows) {
+    const key = toComparableAnimeSlug(s.series_slug);
+    if (!key || seriesByComparable.has(key)) continue;
+    seriesByComparable.set(key, s);
+  }
+
+  const matchedRows = [];
+  const unmatchedRows = [];
+  const seenSeries = new Set();
+  for (const [key, source] of byComparable.entries()) {
+    const s = seriesByComparable.get(key);
+    if (!s) {
+      unmatchedRows.push(source);
+      continue;
+    }
+    if (seenSeries.has(Number(s.id))) continue;
+    seenSeries.add(Number(s.id));
+    matchedRows.push({
+      series_id: Number(s.id),
+      title: String(s.title || ''),
+      day_of_week: source.day,
+      series_slug_snapshot: String(s.series_slug || source.slug || ''),
+      cover_url_snapshot: s.cover_url || null,
+      source_slug: source.slug,
+      source_page: source.page,
+      source_href: source.href
+    });
+  }
+
+  const seriesIds = matchedRows.map((x) => x.series_id);
+  let existingRows = [];
+  if (seriesIds.length) {
+    const idPlaceholders = seriesIds.map(() => '?').join(',');
+    const [rows] = await pool.query(
+      `SELECT id, series_id, day_of_week
+       FROM schedule_entries
+       WHERE series_id IN (${idPlaceholders})
+       ORDER BY id ASC`,
+      seriesIds
+    );
+    existingRows = rows;
+  }
+  const existingBySeries = buildExistingScheduleMap(existingRows);
+
+  const actionCounts = { insert: 0, update: 0, skip: 0 };
+  const previewRows = matchedRows.map((row) => {
+    const plan = planScheduleAction(existingBySeries, row.series_id, row.day_of_week);
+    actionCounts[plan.action] += 1;
+    return {
+      ...row,
+      action: plan.action,
+      current_days: plan.currentDays
+    };
+  });
+
+  return {
+    pageFrom,
+    pageTo,
+    generatedAt: Date.now(),
+    scrapedCount: scrapedRows.length,
+    matchedCount: matchedRows.length,
+    unmatchedCount: unmatchedRows.length,
+    actionCounts,
+    previewRows,
+    unmatchedRows,
+    applyRows: matchedRows.map((x) => ({
+      series_id: x.series_id,
+      day_of_week: x.day_of_week,
+      series_slug_snapshot: x.series_slug_snapshot,
+      cover_url_snapshot: x.cover_url_snapshot
+    }))
+  };
+}
+
+async function applyScheduleRows(conn, rowsToApply) {
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  if (!rowsToApply.length) return { inserted, updated, skipped };
+
+  const seriesIds = rowsToApply.map((x) => Number(x.series_id));
+  const idPlaceholders = seriesIds.map(() => '?').join(',');
+  const [existingRows] = await conn.query(
+    `SELECT id, series_id, day_of_week
+     FROM schedule_entries
+     WHERE series_id IN (${idPlaceholders})
+     ORDER BY id ASC`,
+    seriesIds
+  );
+  const [maxSortRows] = await conn.query(
+    `SELECT day_of_week, COALESCE(MAX(sort_order), 0) AS max_sort
+     FROM schedule_entries
+     GROUP BY day_of_week`
+  );
+  const maxSortByDay = new Map();
+  for (const r of maxSortRows) {
+    maxSortByDay.set(String(r.day_of_week), Number(r.max_sort) || 0);
+  }
+  const existingBySeries = buildExistingScheduleMap(existingRows);
+
+  for (const row of rowsToApply) {
+    const plan = planScheduleAction(existingBySeries, row.series_id, row.day_of_week);
+    if (plan.action === 'skip') {
+      await conn.query(
+        `UPDATE schedule_entries
+         SET series_slug_snapshot = ?,
+             cover_url_snapshot = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?
+         LIMIT 1`,
+        [row.series_slug_snapshot, row.cover_url_snapshot, Number(plan.keepId)]
+      );
+      await conn.query(
+        'DELETE FROM schedule_entries WHERE series_id = ? AND id <> ?',
+        [Number(row.series_id), Number(plan.keepId)]
+      );
+      skipped += 1;
+      continue;
+    }
+
+    if (plan.action === 'update') {
+      await conn.query(
+        `UPDATE schedule_entries
+         SET day_of_week = ?,
+             series_slug_snapshot = ?,
+             cover_url_snapshot = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?
+         LIMIT 1`,
+        [row.day_of_week, row.series_slug_snapshot, row.cover_url_snapshot, Number(plan.keepId)]
+      );
+      await conn.query(
+        'DELETE FROM schedule_entries WHERE series_id = ? AND id <> ?',
+        [Number(row.series_id), Number(plan.keepId)]
+      );
+      updated += 1;
+      continue;
+    }
+
+    const nextSort = (maxSortByDay.get(row.day_of_week) || 0) + 10;
+    maxSortByDay.set(row.day_of_week, nextSort);
+    await conn.query(
+      `INSERT INTO schedule_entries (
+         series_id, day_of_week, series_slug_snapshot, cover_url_snapshot, time_label, sort_order, is_active
+       ) VALUES (?, ?, ?, ?, NULL, ?, 1)`,
+      [Number(row.series_id), row.day_of_week, row.series_slug_snapshot, row.cover_url_snapshot, nextSort]
+    );
+    inserted += 1;
+  }
+
+  return { inserted, updated, skipped };
+}
+
 async function ensureScheduleTable() {
   if (scheduleTableReady) return;
   await pool.query(`
@@ -1243,6 +1522,9 @@ router.get('/schedule', async (req, res) => {
 
   try {
     await ensureScheduleTable();
+    if (req.query.clear_preview === '1' && req.session) {
+      req.session.scheduleSyncPreview = null;
+    }
 
     const where = [];
     const params = [];
@@ -1326,6 +1608,19 @@ router.get('/schedule', async (req, res) => {
       created: req.query.created === '1',
       deleted: req.query.deleted === '1',
       deletedAll: req.query.deleted_all === '1',
+      syncDone: req.query.sync_done === '1',
+      syncError: req.query.sync_error ? String(req.query.sync_error) : '',
+      syncStats: {
+        pageStart: toInt(req.query.sync_page_start, 0, 1, 30) || 0,
+        pageEnd: toInt(req.query.sync_page_end, 0, 1, 30) || 0,
+        scraped: toInt(req.query.sync_scraped, 0, 0, 5000) || 0,
+        matched: toInt(req.query.sync_matched, 0, 0, 5000) || 0,
+        inserted: toInt(req.query.sync_inserted, 0, 0, 5000) || 0,
+        updated: toInt(req.query.sync_updated, 0, 0, 5000) || 0,
+        skipped: toInt(req.query.sync_skipped, 0, 0, 5000) || 0
+      },
+      previewReady: req.query.preview_ready === '1',
+      syncPreview: req.session ? (req.session.scheduleSyncPreview || null) : null,
       error: req.query.error ? String(req.query.error) : ''
     });
   } catch (err) {
@@ -1811,6 +2106,55 @@ router.post('/schedule/create', async (req, res) => {
       return res.redirect('/admin/schedule?error=Series sudah ada di hari tersebut');
     }
     return res.redirect(`/admin/schedule?error=${encodeURIComponent(err.message || 'Gagal membuat jadwal')}`);
+  }
+});
+
+router.post('/schedule/auto-sync-otakudesu', async (req, res) => {
+  const pageStart = toInt(req.body.page_start, 1, 1, 30) || 1;
+  const pageEnd = toInt(req.body.page_end, 5, 1, 30) || 5;
+  const pageFrom = Math.min(pageStart, pageEnd);
+  const pageTo = Math.max(pageStart, pageEnd);
+
+  try {
+    await ensureScheduleTable();
+    const preview = await buildOtakudesuSchedulePreview(pageFrom, pageTo);
+    if (req.session) {
+      req.session.scheduleSyncPreview = preview;
+    }
+    return res.redirect('/admin/schedule?preview_ready=1');
+  } catch (err) {
+    return res.redirect(`/admin/schedule?sync_error=${encodeURIComponent(err.message || 'Gagal auto sync jadwal')}`);
+  }
+});
+
+router.post('/schedule/auto-sync-otakudesu/apply', async (req, res) => {
+  try {
+    await ensureScheduleTable();
+    const preview = req.session ? req.session.scheduleSyncPreview : null;
+    if (!preview || !Array.isArray(preview.applyRows)) {
+      return res.redirect('/admin/schedule?error=Preview tidak ditemukan. Jalankan preview dulu.');
+    }
+
+    const conn = await pool.getConnection();
+    let applied = { inserted: 0, updated: 0, skipped: 0 };
+    try {
+      await conn.beginTransaction();
+      applied = await applyScheduleRows(conn, preview.applyRows);
+      await conn.commit();
+    } catch (errTx) {
+      await conn.rollback();
+      throw errTx;
+    } finally {
+      conn.release();
+    }
+
+    if (req.session) req.session.scheduleSyncPreview = null;
+
+    return res.redirect(
+      `/admin/schedule?sync_done=1&sync_page_start=${preview.pageFrom}&sync_page_end=${preview.pageTo}&sync_scraped=${preview.scrapedCount}&sync_matched=${preview.matchedCount}&sync_inserted=${applied.inserted}&sync_updated=${applied.updated}&sync_skipped=${applied.skipped}`
+    );
+  } catch (err) {
+    return res.redirect(`/admin/schedule?sync_error=${encodeURIComponent(err.message || 'Gagal apply auto sync jadwal')}`);
   }
 });
 
